@@ -3,414 +3,325 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業地政士費用結算系統 (Nexus Ultimate Edition v2)</title>
+    <title>專業地政士費用結算系統 (Nexus Ultimate Stable)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&display=swap');
         
-        /* 禁止選取文字，防止複製 */
+        :root {
+            --paper-width: 210mm;
+            --paper-height: 296mm;
+        }
+
         body { 
             font-family: 'Noto Sans TC', sans-serif; 
-            background-color: #f3f4f6; 
-            -webkit-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
+            background-color: #e5e7eb; 
+            -webkit-user-select: none; user-select: none;
+            overflow: hidden; 
         }
         .serif { font-family: 'Noto Serif TC', serif; }
-        
-        /* 印章樣式 */
-        .stamp-box {
-            border: 3px double #ef4444;
-            color: #ef4444;
-            padding: 5px 8px;
-            display: inline-block;
-            transform: rotate(-2deg);
-            font-family: 'Noto Serif TC', serif;
-            position: relative;
-            background-color: rgba(255, 255, 255, 0.9);
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.5);
-            min-width: 120px;
-        }
-        .stamp-inner { border: 1px solid #ef4444; padding: 2px; text-align: center; }
-
-        /* 隱藏捲軸 */
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* --- 版面設定 --- */
-        .a4-paper {
-            width: 210mm;
-            min-height: 297mm;
-            padding: 10mm 12mm;
-            background-color: white;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            color: #1f2937;
-            transform-origin: top center;
-            transition: transform 0.2s;
-        }
-
-        /* 緊湊排版 */
-        .compact-text { font-size: 10pt; }
-        .compact-header { font-size: 11pt; font-weight: bold; }
-        .compact-row td { padding-top: 2px; padding-bottom: 2px; }
-        .compact-mb { margin-bottom: 4px; }
-        .compact-gap { gap: 8px; }
-
-        /* 輸入框優化 */
         .input-custom {
-            width: 100%;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            padding: 0.35rem 0.5rem;
-            font-size: 0.875rem;
-            outline: none;
-            transition: all 0.2s;
-            background-color: #fff;
-            -webkit-user-select: text;
-            user-select: text;
+            width: 100%; border: 1px solid #d1d5db; border-radius: 4px;
+            padding: 6px 8px; font-size: 14px; outline: none; transition: 0.2s;
         }
-        .input-custom:focus { ring: 2px solid #3b82f6; border-color: #3b82f6; }
+        .input-custom:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
 
-        /* 智慧選單 */
+        /* --- 關鍵修復：智慧選單層級與樣式 --- */
         .autocomplete-suggestions {
-            position: absolute;
-            border: 1px solid #e5e7eb;
-            border-top: none;
-            z-index: 1000;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background-color: #fff;
-            border-radius: 0 0 0.375rem 0.375rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            max-height: 200px;
-            overflow-y: auto;
+            position: absolute; 
+            border: 1px solid #cbd5e1; 
+            z-index: 9999; /* 極高的層級 */
+            top: 100%; left: 0; right: 0; 
+            background-color: #ffffff;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-height: 250px; 
+            overflow-y: auto; 
             display: none;
+            border-radius: 0 0 6px 6px;
         }
-        .autocomplete-suggestions div {
-            padding: 8px 10px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            color: #374151;
-            border-bottom: 1px solid #f3f4f6;
+        .autocomplete-suggestions div { 
+            padding: 10px 12px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            border-bottom: 1px solid #f1f5f9;
+            color: #334155;
         }
         .autocomplete-suggestions div:hover { background-color: #eff6ff; color: #1d4ed8; }
-        .row-active { z-index: 50 !important; position: relative; }
-        .row-inactive { z-index: 10; position: relative; }
+        
+        /* 確保正在編輯的行層級最高 */
+        .row-wrapper { position: relative; z-index: 10; }
+        .row-wrapper.active-row { z-index: 50; }
 
-        /* --- 列印專用樣式 --- */
+        /* A4 紙張設定 */
+        #previewContainer {
+            background-color: #52525b; 
+            display: flex; justify-content: center; align-items: flex-start;
+            padding: 20px; overflow-y: auto; height: 100vh;
+        }
+        #paper {
+            width: var(--paper-width); height: var(--paper-height);
+            background: white; box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            position: relative; padding: 10mm 12mm; box-sizing: border-box;
+            display: flex; flex-direction: column; transform-origin: top center; overflow: hidden;
+        }
+        #scalableContent {
+            display: flex; flex-direction: column; flex-grow: 1; height: 100%; transform-origin: top center;
+        }
+
+        /* 雙欄佈局 */
+        .columns-container { display: flex; gap: 15px; flex-grow: 1; align-items: flex-start; }
+        .column-box { flex: 1; border: 1px solid #e5e7eb; border-radius: 4px; display: flex; flex-direction: column; }
+        .column-header { padding: 6px 10px; border-bottom: 2px solid; font-weight: bold; font-size: 11pt; background-color: #f9fafb; }
+
+        .bill-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+        .bill-table td { padding: 4px 6px; border-bottom: 1px solid #f3f4f6; }
+        .amount-col { text-align: right; font-family: 'Roboto', sans-serif; font-weight: 500; white-space: nowrap; }
+        
+        .footer-section { margin-top: auto; padding-top: 10px; border-top: 2px solid #374151; }
+        .stamp-box {
+            border: 3px double #ef4444; color: #ef4444; padding: 4px 8px;
+            display: inline-block; transform: rotate(-2deg);
+            font-family: 'Noto Serif TC', serif; background: rgba(255,255,255,0.95);
+            min-width: 110px; text-align: center;
+        }
+
         @media print {
             @page { size: A4; margin: 0; }
-            body > *:not(#previewContainer), .no-print, #modalManager { display: none !important; }
-            body { background-color: white !important; margin: 0 !important; padding: 0 !important; height: auto !important; }
+            body * { visibility: hidden; }
+            #previewContainer, #previewContainer * { visibility: visible; }
             #previewContainer {
-                display: block !important; position: absolute !important; top: 0 !important; left: 0 !important;
-                width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important;
-                background-color: white !important; z-index: 9999;
+                position: absolute; left: 0; top: 0; padding: 0; margin: 0;
+                width: 210mm; height: 296mm; background: white; overflow: hidden; display: block;
             }
-            #paperWrapper { display: block !important; padding: 0 !important; margin: 0 !important; height: auto !important; }
-            #paper {
-                width: 100% !important; max-width: 100% !important; height: auto !important; min-height: 100% !important;
-                margin: 0 !important; padding: 10mm 12mm !important; box-shadow: none !important; transform: none !important;
-            }
-            .page-break { page-break-inside: avoid; }
-            .print-mode-active .stamp-visual { display: none !important; }
-            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            #paper { box-shadow: none; margin: 0; transform: none !important; width: 100%; height: 100%; }
+            .no-print { display: none !important; }
         }
     </style>
 </head>
-<body class="text-gray-800 h-screen overflow-hidden flex flex-col md:flex-row" onclick="closeAllLists(event)">
+<body class="flex flex-col md:flex-row h-screen" onclick="closeAllLists(event)">
 
-    <div class="w-full md:w-[450px] bg-white border-r border-gray-300 flex flex-col h-1/2 md:h-full z-20 shadow-xl no-print relative">
-        
-        <div class="p-3 bg-slate-800 text-white shadow-md z-30 flex-shrink-0">
-            <h2 class="font-bold text-lg mb-3 flex items-center justify-center"><i class="fas fa-calculator mr-2"></i>專業費用結算系統</h2>
-            
-            <div class="grid grid-cols-2 gap-2 mb-2">
-                <button onclick="document.getElementById('caseInput').click()" class="bg-orange-600 hover:bg-orange-500 text-white py-3 rounded-lg shadow-lg font-bold text-base transition flex items-center justify-center transform active:scale-95">
-                    <i class="fas fa-folder-open mr-2 text-xl"></i> 讀取舊檔案
+    <div class="w-full md:w-[400px] bg-white border-r border-gray-300 flex flex-col z-20 shadow-2xl no-print h-full">
+        <div class="p-4 bg-slate-800 text-white shrink-0">
+            <h2 class="font-bold text-xl mb-4 text-center tracking-wider"><i class="fas fa-file-invoice-dollar mr-2"></i>專業結算系統</h2>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <button onclick="document.getElementById('caseInput').click()" class="bg-orange-600 hover:bg-orange-500 text-white py-2.5 rounded shadow font-bold transition flex items-center justify-center gap-2">
+                    <i class="fas fa-folder-open"></i> 讀取舊檔
                 </button>
                 <input type="file" id="caseInput" class="hidden" accept=".json" onchange="loadCase(this)">
-
-                <button onclick="saveCase()" class="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg shadow-lg font-bold text-base transition flex items-center justify-center transform active:scale-95">
-                    <i class="fas fa-save mr-2 text-xl"></i> 儲存收據
+                <button onclick="saveCase()" class="bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded shadow font-bold transition flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> 儲存收據
                 </button>
             </div>
-
-            <button onclick="resetCase()" class="w-full bg-slate-600 hover:bg-red-500 text-gray-200 hover:text-white py-1.5 rounded border border-slate-500 text-xs transition">
-                <i class="fas fa-redo mr-1"></i> 清空重置 (開啟新案件)
+            <button onclick="resetCase()" class="w-full bg-slate-700 hover:bg-red-600 text-gray-300 hover:text-white py-1.5 rounded text-xs transition border border-slate-600">
+                <i class="fas fa-redo mr-1"></i> 開啟新案件 (清空)
             </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-4 space-y-5 hide-scrollbar bg-gray-50">
-            
-            <div class="space-y-2 bg-white p-3 rounded shadow-sm border border-gray-200">
-                <div class="flex gap-2">
-                    <label class="flex-1 cursor-pointer border rounded p-1 flex items-center justify-center hover:bg-blue-50 peer-checked:bg-blue-100 transition">
+        <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 hide-scrollbar">
+            <div class="bg-white p-3 rounded shadow-sm border border-gray-200">
+                <div class="flex gap-2 mb-2">
+                    <label class="flex-1 cursor-pointer border rounded p-1.5 flex justify-center hover:bg-blue-50 peer-checked:bg-blue-100 transition">
                         <input type="radio" name="firm" value="yicheng" checked onchange="updateView()" class="mr-2"> 易丞
                     </label>
-                    <label class="flex-1 cursor-pointer border rounded p-1 flex items-center justify-center hover:bg-green-50 transition">
+                    <label class="flex-1 cursor-pointer border rounded p-1.5 flex justify-center hover:bg-green-50 transition">
                         <input type="radio" name="firm" value="hongguo" onchange="updateView()" class="mr-2"> 宏國
                     </label>
                 </div>
-                <div class="bg-yellow-50 p-2 rounded border border-yellow-200">
-                    <label class="block text-xs font-bold text-gray-600 mb-1">客戶類型 (影響扣繳)</label>
-                    <div class="flex gap-2 text-sm">
-                        <label class="flex-1 cursor-pointer bg-white border border-gray-300 rounded p-1 flex items-center justify-center">
-                            <input type="radio" name="clientType" value="individual" checked onchange="calculateTotal()" class="mr-2"> 個人
-                        </label>
-                        <label class="flex-1 cursor-pointer bg-white border border-gray-300 rounded p-1 flex items-center justify-center">
-                            <input type="radio" name="clientType" value="company" onchange="calculateTotal()" class="mr-2"> 公司
-                        </label>
-                    </div>
+                <div class="flex gap-2 text-sm bg-yellow-50 p-2 rounded border border-yellow-100">
+                    <label class="flex-1 flex items-center justify-center cursor-pointer"><input type="radio" name="clientType" value="individual" checked onchange="calculateTotal()" class="mr-1"> 個人</label>
+                    <label class="flex-1 flex items-center justify-center cursor-pointer"><input type="radio" name="clientType" value="company" onchange="calculateTotal()" class="mr-1"> 公司</label>
                 </div>
             </div>
 
-            <div class="space-y-2">
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="text-xs font-bold text-gray-500">日期 (日曆/Key in)</label>
-                        <input type="date" id="inputDate" class="input-custom cursor-pointer">
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-gray-500">統編</label>
-                        <input type="text" id="inputClientId" class="input-custom" placeholder="選填">
-                    </div>
+            <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="date" id="inputDate" class="input-custom" title="日期">
+                    <input type="text" id="inputClientId" class="input-custom" placeholder="統編 (選填)">
                 </div>
-                <div>
-                    <label class="text-xs font-bold text-gray-500">抬頭</label>
-                    <input type="text" id="inputClient" class="input-custom" placeholder="請輸入客戶抬頭">
-                </div>
-                <div>
-                    <label class="text-xs font-bold text-gray-500">案件標的 / 地址</label>
-                    <textarea id="inputTarget" rows="2" class="input-custom" placeholder="請輸入地址或地號..."></textarea>
-                </div>
+                <input type="text" id="inputClient" class="input-custom" placeholder="客戶抬頭">
+                <textarea id="inputTarget" rows="2" class="input-custom" placeholder="案件標的 / 地址"></textarea>
             </div>
 
-            <div class="border-t border-gray-300 pt-3">
+            <div class="border-t pt-2">
                 <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-gray-700 text-sm">A. 代辦費</h3>
+                    <h3 class="font-bold text-gray-700">A. 代辦費</h3>
                     <div class="flex gap-1">
-                        <button onclick="openOptionManager('service')" class="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300 transition" title="管理選項"><i class="fas fa-cog"></i></button>
-                        <button onclick="addItem('service')" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 font-bold">+ 新增</button>
+                        <button onclick="openOptionManager('service')" class="px-2 py-1 bg-gray-200 rounded text-xs"><i class="fas fa-cog"></i></button>
+                        <button onclick="addItem('service')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold">+ 新增</button>
                     </div>
                 </div>
-                <div id="serviceItems" class="space-y-2"></div>
-                
+                <div id="serviceItems" class="space-y-1"></div>
                 <div class="mt-2 flex items-center gap-2 bg-green-50 p-2 rounded border border-green-200">
-                    <span class="text-green-700 text-xs font-bold whitespace-nowrap"><i class="fas fa-gift"></i> 折扣</span>
-                    <input type="text" id="discountName" value="老客戶優惠" class="flex-grow text-xs border rounded p-1">
-                    <input type="number" id="discountAmount" value="0" oninput="calculateTotal()" class="w-20 text-right text-xs border rounded p-1" placeholder="$">
+                    <span class="text-green-700 text-xs font-bold">折扣</span>
+                    <input type="text" id="discountName" value="老客戶優惠" class="flex-1 text-xs border rounded p-1">
+                    <input type="number" id="discountAmount" value="0" oninput="calculateTotal()" class="w-16 text-right text-xs border rounded p-1">
                 </div>
             </div>
 
-            <div class="border-t border-gray-300 pt-3">
+            <div class="border-t pt-2">
                 <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-gray-700 text-sm">B. 代納規費 (實支實付)</h3>
-                      <div class="flex gap-1">
-                        <button onclick="openOptionManager('tax')" class="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300 transition" title="管理選項"><i class="fas fa-cog"></i></button>
-                        <button onclick="addItem('tax')" class="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 font-bold">+ 新增</button>
+                    <h3 class="font-bold text-gray-700">B. 代納規費</h3>
+                    <div class="flex gap-1">
+                        <button onclick="openOptionManager('tax')" class="px-2 py-1 bg-gray-200 rounded text-xs"><i class="fas fa-cog"></i></button>
+                        <button onclick="addItem('tax')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">+ 新增</button>
                     </div>
                 </div>
-                <div id="taxItems" class="space-y-2"></div>
+                <div id="taxItems" class="space-y-1"></div>
             </div>
 
-            <div class="border-t border-gray-300 pt-3 bg-yellow-50 p-2 rounded">
-                <h3 class="font-bold text-gray-700 text-sm mb-2">C. 找補與預收</h3>
-                <div class="grid grid-cols-1 gap-2">
+            <div class="border-t pt-2 bg-yellow-50 p-2 rounded">
+                <div class="space-y-2">
                     <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold w-24">稅費找補</span>
-                        <input type="text" id="adjustName" value="地價稅/房屋稅找補" class="flex-grow text-xs border rounded p-1" placeholder="項目說明">
-                        <input type="number" id="adjustAmount" value="0" oninput="calculateTotal()" class="w-20 text-right text-xs border rounded p-1" placeholder="負數加-">
+                        <span class="text-xs font-bold w-16">找補</span>
+                        <input type="text" id="adjustName" value="稅費找補" class="flex-1 text-xs border rounded p-1">
+                        <input type="number" id="adjustAmount" value="0" oninput="calculateTotal()" class="w-16 text-right text-xs border rounded p-1">
                     </div>
                     <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold w-24 text-red-600">預收款(扣除)</span>
-                        <input type="text" value="預收規費" class="flex-grow text-xs border rounded p-1 bg-gray-100" disabled>
-                        <input type="number" id="prepayAmount" value="0" oninput="calculateTotal()" class="w-20 text-right text-xs border rounded p-1 text-red-600 font-bold" placeholder="$">
+                        <span class="text-xs font-bold w-16 text-red-600">預收</span>
+                        <input type="text" value="預收規費" class="flex-1 text-xs border rounded p-1 bg-gray-100" disabled>
+                        <input type="number" id="prepayAmount" value="0" oninput="calculateTotal()" class="w-16 text-right text-xs border rounded p-1 text-red-600 font-bold">
                     </div>
                 </div>
             </div>
 
-            <div class="border-t border-gray-300 pt-3 pb-20">
+            <div class="border-t pt-2 pb-10">
                 <label class="text-xs font-bold text-gray-500">備註事項</label>
-                <textarea id="inputNotes" rows="5" class="input-custom text-xs">◎若要辦理地價稅自用，請於9月22日前申請。
+                <textarea id="inputNotes" rows="4" class="input-custom text-xs">◎若要辦理地價稅自用，請於9月22日前申請。
 ◎若要辦理房屋稅自用，請於3月22日前申請。
 ◎辦理自用稅率需先將戶籍遷入。
 ◎上列地政士代辦費，本事務所列為執行業務收入，若付款人為中華民國境內之公司行號或機關團體，請依法扣繳10%稅款 ，並開立扣繳憑單予本事務所。</textarea>
             </div>
         </div>
 
-        <div class="p-3 bg-white border-t border-gray-300 space-y-2 z-30 shadow-[0_-5px_10px_rgba(0,0,0,0.1)] absolute bottom-0 left-0 right-0">
-            <div class="flex items-center justify-between bg-gray-100 p-2 rounded">
-                <span class="text-xs font-bold text-gray-600">輸出：</span>
-                <div class="flex gap-2">
-                     <label class="flex items-center cursor-pointer text-xs">
-                        <input type="radio" name="printMode" value="pdf" checked onchange="toggleStampMode()" class="mr-1"> 
-                        存檔PDF(有章)
-                    </label>
-                    <label class="flex items-center cursor-pointer text-xs">
-                        <input type="radio" name="printMode" value="print" onchange="toggleStampMode()" class="mr-1"> 
-                        列印(無章)
-                    </label>
-                </div>
+        <div class="p-4 bg-white border-t shrink-0">
+             <div class="flex justify-center gap-4 mb-2 text-xs">
+                <label class="flex items-center cursor-pointer"><input type="radio" name="printMode" value="pdf" checked onchange="toggleStampMode()" class="mr-1"> 存檔PDF (有章)</label>
+                <label class="flex items-center cursor-pointer"><input type="radio" name="printMode" value="print" onchange="toggleStampMode()" class="mr-1"> 直接列印 (無章)</label>
             </div>
-            <button onclick="window.print()" class="w-full bg-slate-800 text-white py-3 rounded-lg shadow hover:bg-slate-700 font-bold transition text-lg">
-                <i class="fas fa-print mr-2"></i>列印 / 輸出 PDF
+            <button onclick="window.print()" class="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg shadow font-bold text-lg transition">
+                <i class="fas fa-print mr-2"></i>輸出 / 列印
             </button>
         </div>
     </div>
 
-    <div class="w-full md:flex-1 bg-gray-600 overflow-hidden relative flex flex-col h-1/2 md:h-full z-10" id="previewContainer">
-        <div class="flex-1 overflow-auto flex justify-center p-4 md:p-8" id="paperWrapper">
-            <div id="paper" class="a4-paper print-container relative">
-                
-                <div id="headerBorder" class="border-b-4 pb-2 mb-4 compact-mb flex justify-between items-end border-blue-800">
+    <div id="previewContainer" class="flex-1">
+        <div id="paper">
+            <div id="scalableContent">
+                <div id="headerBorder" class="flex justify-between items-end border-b-4 pb-2 mb-3">
                     <div>
-                        <h1 id="firmName" class="text-3xl font-black serif tracking-wider text-blue-900">易丞地政士事務所</h1>
-                        <div class="text-[10px] tracking-[0.3em] text-gray-500 mt-1 font-bold">PROFESSIONAL LAND AGENT</div>
+                        <h1 id="firmName" class="text-4xl font-black serif tracking-widest leading-none">易丞地政士事務所</h1>
+                        <div class="text-[11px] tracking-[0.4em] text-gray-500 mt-1 font-bold">PROFESSIONAL LAND AGENT</div>
                     </div>
                     <div class="text-right">
-                        <div class="text-xl font-bold text-gray-800 mb-1">各項規費及勞務費明細表</div>
-                        <div class="text-xs text-gray-600 font-medium bg-gray-100 px-2 py-1 rounded inline-block">日期：<span id="displayDate"></span></div>
-                    </div>
-                </div>
-
-                <div class="mb-4 compact-mb">
-                    <table class="w-full text-xs compact-text border-collapse border border-gray-300">
-                        <tr>
-                            <td class="bg-gray-100 w-24 p-1.5 font-bold text-gray-700 border border-gray-300">委託客戶</td>
-                            <td class="p-1.5 font-bold text-base border border-gray-300 relative">
-                                <span id="displayClient"></span>
-                                <span id="displayClientId" class="text-[10px] text-gray-500 absolute bottom-1 right-2"></span>
-                            </td>
-                            <td class="bg-gray-100 w-24 p-1.5 font-bold text-gray-700 border border-gray-300">客戶類型</td>
-                            <td class="p-1.5 border border-gray-300 w-32" id="displayClientType">個人</td>
-                        </tr>
-                        <tr>
-                            <td class="bg-gray-100 p-1.5 font-bold text-gray-700 border border-gray-300 align-top">案件標的</td>
-                            <td colspan="3" class="p-1.5 border border-gray-300 whitespace-pre-wrap leading-relaxed" id="displayTarget"></td>
-                        </tr>
-                    </table>
-                </div>
-
-                <div class="flex-grow flex flex-col gap-3 compact-gap">
-                    
-                    <div>
-                        <div class="flex items-center mb-1 bg-gray-50 p-1 border-l-4" id="sectionHeader1">
-                            <h3 class="compact-header ml-2">A. 地政士代辦費 (含稅/執行業務所得)</h3>
+                        <div class="text-2xl font-bold text-gray-800 leading-none">各項規費及勞務費明細表</div>
+                        <div class="text-xs text-gray-600 font-medium mt-1 bg-gray-100 px-2 py-0.5 rounded inline-block">
+                            日期：<span id="displayDate"></span>
                         </div>
-                        <table class="w-full compact-text table-fixed">
-                            <thead class="border-b border-gray-400 text-gray-600 text-[10px]">
-                                <tr>
-                                    <th class="text-left py-1 pl-2 w-3/4">項目名稱</th>
-                                    <th class="text-right py-1 w-1/4">金額</th>
-                                </tr>
-                            </thead>
-                            <tbody id="displayServiceRows" class="text-gray-800 compact-row"></tbody>
-                            <tbody id="displayDiscountRow" class="text-green-700 hidden border-t border-dashed border-gray-300 compact-row">
-                                <tr>
-                                    <td class="pl-2 font-bold"><i class="fas fa-minus-circle text-[10px] mr-1"></i><span id="dName">折扣</span></td>
-                                    <td class="text-right font-bold">- <span id="dAmount">0</span></td>
-                                </tr>
-                            </tbody>
-                            <tfoot class="font-bold border-t border-gray-300 bg-gray-50 compact-row">
-                                <tr>
-                                    <td class="pl-2 text-right">代辦費小計：</td>
-                                    <td class="text-right pr-1" id="totalService">$0</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-
-                    <div>
-                        <div class="flex items-center mb-1 bg-gray-50 p-1 border-l-4" id="sectionHeader2">
-                            <h3 class="compact-header ml-2">B. 代納政府規費與稅金 (實支實付)</h3>
-                        </div>
-                        <table class="w-full compact-text table-fixed">
-                            <thead class="border-b border-gray-400 text-gray-600 text-[10px]">
-                                <tr>
-                                    <th class="text-left py-1 pl-2 w-3/4">項目名稱</th>
-                                    <th class="text-right py-1 w-1/4">金額</th>
-                                </tr>
-                            </thead>
-                            <tbody id="displayTaxRows" class="text-gray-800 compact-row"></tbody>
-                            <tfoot class="font-bold border-t border-gray-300 bg-gray-50 compact-row">
-                                <tr>
-                                    <td class="pl-2 text-right">代納規費小計：</td>
-                                    <td class="text-right pr-1" id="totalTax">$0</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-
-                    <div class="mt-2 border-t border-gray-400 pt-2">
-                        <table class="w-full compact-text compact-row">
-                            <tr id="rowAdjust" class="hidden text-blue-700">
-                                <td class="text-right pr-4 font-bold w-3/4"><span id="txtAdjustName">稅費找補</span>：</td>
-                                <td class="text-right pr-1 font-bold w-1/4" id="txtAdjustAmount">$0</td>
-                            </tr>
-                            <tr id="rowPrepay" class="hidden text-red-600">
-                                <td class="text-right pr-4 font-bold w-3/4">減：預收規費/款項：</td>
-                                <td class="text-right pr-1 font-bold w-1/4" id="txtPrepayAmount">-$0</td>
-                            </tr>
-                        </table>
                     </div>
                 </div>
 
-                <div class="mt-auto pt-2 page-break">
-                    
-                    <div class="flex justify-end mb-4 border-t-2 border-gray-800 pt-4">
-                        <div class="w-3/5">
-                            <div id="normalTotalBox" class="text-right">
-                                <div class="text-gray-600 text-xs font-bold mb-1">總計實收金額 (Total)：</div>
-                                <div class="font-black text-3xl text-gray-800 serif" id="grandTotal">$0</div>
-                            </div>
+                <div class="border border-gray-300 mb-3 text-sm">
+                    <div class="flex border-b border-gray-300">
+                        <div class="w-24 bg-gray-100 p-1.5 font-bold flex items-center justify-center border-r border-gray-300 text-gray-700">委託客戶</div>
+                        <div class="flex-1 p-1.5 font-bold relative text-lg flex items-center">
+                            <span id="displayClient"></span>
+                            <span id="displayClientId" class="text-[10px] text-gray-500 ml-2 font-normal"></span>
+                        </div>
+                        <div class="w-24 bg-gray-100 p-1.5 font-bold flex items-center justify-center border-l border-r border-gray-300 text-gray-700">客戶類型</div>
+                        <div class="w-24 p-1.5 flex items-center justify-center" id="displayClientType">個人</div>
+                    </div>
+                    <div class="flex">
+                        <div class="w-24 bg-gray-100 p-1.5 font-bold flex items-center justify-center border-r border-gray-300 text-gray-700">案件標的</div>
+                        <div class="flex-1 p-1.5 leading-relaxed whitespace-pre-wrap" id="displayTarget"></div>
+                    </div>
+                </div>
 
-                            <div id="companyTaxBox" class="hidden w-full">
-                                <table class="w-full text-right compact-text">
-                                    <tr class="text-gray-500">
-                                        <td class="pb-1 font-medium">應收總計：</td>
-                                        <td class="pb-1 text-lg font-bold" id="rawTotalAmount">$0</td>
-                                    </tr>
-                                    <tr class="text-red-600">
-                                        <td class="pb-2 font-bold border-b border-gray-300">減：10% 代扣稅款：</td>
-                                        <td class="pb-2 font-bold border-b border-gray-300 text-lg" id="taxDeductionAmount">-$0</td>
-                                    </tr>
+                <div class="columns-container">
+                    <div class="column-box" id="colBoxService">
+                        <div class="column-header" id="headerService">A. 地政士代辦費 (含稅)</div>
+                        <div class="flex-1 p-1">
+                            <table class="bill-table">
+                                <tbody id="displayServiceRows"></tbody>
+                                <tbody id="displayDiscountRow" class="text-green-700 hidden">
                                     <tr>
-                                        <td class="pt-2 text-gray-800 font-bold text-base">實收金額：</td>
-                                        <td class="pt-2 font-black text-3xl text-red-600 serif" id="netTotalAmount">$0</td>
+                                        <td class="pl-2 font-bold"><i class="fas fa-minus-circle text-[10px] mr-1"></i><span id="dName">折扣</span></td>
+                                        <td class="amount-col font-bold">- <span id="dAmount">0</span></td>
                                     </tr>
-                                </table>
-                                <div class="text-[10px] text-gray-400 mt-1 text-right">* 代辦費>2萬，已扣除10%稅款</div>
-                            </div>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="bg-gray-50 border-t border-gray-300 p-2 flex justify-between font-bold text-sm">
+                            <span>代辦費小計</span>
+                            <span id="totalService">$0</span>
                         </div>
                     </div>
 
-                    <div class="flex justify-between items-start border-t border-gray-200 pt-3">
-                        <div class="w-[60%] text-[10px] text-gray-600 leading-tight">
-                            <p class="font-bold mb-1">備註 / 注意事項：</p>
-                            <div id="displayNotes" class="whitespace-pre-wrap border border-gray-100 p-2 rounded bg-gray-50 min-h-[6rem] compact-text"></div>
-                            <div class="mt-2 text-gray-400 text-[10px]">
-                                <i class="fas fa-map-marker-alt mr-1"></i><span id="firmAddress">台南市北區文賢路1080巷11號</span>
-                            </div>
+                    <div class="column-box" id="colBoxTax">
+                        <div class="column-header" id="headerTax">B. 代納規費 (實支實付)</div>
+                        <div class="flex-1 p-1">
+                            <table class="bill-table">
+                                <tbody id="displayTaxRows"></tbody>
+                            </table>
                         </div>
+                        <div class="bg-gray-50 border-t border-gray-300 p-2 flex justify-between font-bold text-sm">
+                            <span>代納規費小計</span>
+                            <span id="totalTax">$0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end gap-6 mt-2 text-sm px-2">
+                    <div id="rowAdjust" class="hidden font-bold">
+                        <span id="txtAdjustName" class="mr-2">稅費找補:</span>
+                        <span id="txtAdjustAmount">$0</span>
+                    </div>
+                    <div id="rowPrepay" class="hidden text-red-600 font-bold">
+                        <span class="mr-2">減：預收規費:</span>
+                        <span id="txtPrepayAmount">-$0</span>
+                    </div>
+                </div>
 
-                        <div class="w-[35%] flex flex-col items-center justify-center stamp-visual">
-                            <div class="stamp-box">
-                                <div class="stamp-inner">
-                                    <h4 class="font-black text-lg mb-1" id="stampFirmName">易丞地政士事務所</h4>
-                                    <div class="text-[10px] font-bold border-t border-b border-red-400 py-1 my-1 leading-tight">
-                                        勞務費收據<br>印花稅總繳
-                                    </div>
-                                    <div class="text-[10px] font-bold leading-tight">
-                                        統編：<span id="stampId">92367068</span><br>
-                                        負責人：<span id="stampAgent">楊翊晟</span>
+                <div class="footer-section">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1 pr-4 flex gap-4">
+                            <div class="flex-1 text-[10px] text-gray-600 leading-tight">
+                                <div class="font-bold mb-1">備註 / 注意事項：</div>
+                                <div id="displayNotes" class="whitespace-pre-wrap border border-gray-200 p-1.5 rounded bg-gray-50"></div>
+                                <div class="mt-1 text-gray-400"><i class="fas fa-map-marker-alt mr-1"></i><span id="firmAddress"></span></div>
+                            </div>
+                            
+                            <div class="stamp-visual flex flex-col items-center justify-center shrink-0">
+                                <div class="stamp-box">
+                                    <div class="stamp-inner">
+                                        <h4 class="font-black text-base mb-1" id="stampFirmName">易丞地政士</h4>
+                                        <div class="text-[9px] font-bold border-t border-b border-red-400 py-0.5 my-0.5">勞務費收據/印花總繳</div>
+                                        <div class="text-[9px] font-bold leading-tight">
+                                            統編：<span id="stampId"></span><br>
+                                            負責人：<span id="stampAgent"></span>
+                                        </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="w-[220px] text-right">
+                             <div id="normalTotalBox">
+                                <div class="text-gray-500 text-xs font-bold">總計實收金額 (Total)</div>
+                                <div class="font-black text-4xl text-gray-800 serif leading-snug" id="grandTotal">$0</div>
+                            </div>
+
+                             <div id="companyTaxBox" class="hidden w-full text-sm">
+                                <div class="flex justify-between text-gray-500"><span>應收總計:</span><span id="rawTotalAmount" class="font-bold">$0</span></div>
+                                <div class="flex justify-between text-red-600 border-b border-gray-300 pb-1 mb-1"><span>減:10%稅款:</span><span id="taxDeductionAmount" class="font-bold">-$0</span></div>
+                                <div class="flex justify-between items-end">
+                                    <span class="font-bold text-gray-800">實收:</span>
+                                    <span class="font-black text-3xl text-red-600 serif leading-none" id="netTotalAmount">$0</span>
+                                </div>
+                                <div class="text-[9px] text-gray-400 mt-1">* 代辦費>2萬，已扣10%稅款</div>
                             </div>
                         </div>
                     </div>
@@ -421,448 +332,321 @@
 
     <div id="modalManager" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
         <div class="bg-white rounded-lg w-[400px] shadow-2xl flex flex-col max-h-[80vh]">
-            <div class="p-4 border-b bg-gray-100 rounded-t-lg flex justify-between items-center">
-                <h3 class="font-bold text-lg text-gray-700" id="modalTitle">管理選單</h3>
-                <button onclick="closeOptionManager()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
+            <div class="p-4 border-b bg-gray-100 flex justify-between items-center rounded-t-lg">
+                <h3 class="font-bold text-gray-700" id="modalTitle">管理選單</h3>
+                <button onclick="closeOptionManager()" class="text-gray-500 hover:text-black"><i class="fas fa-times"></i></button>
             </div>
-            
             <div class="p-4 flex-1 overflow-y-auto bg-gray-50">
                 <div class="flex gap-2 mb-4">
-                    <input type="text" id="newOptionInput" class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="輸入新選項名稱...">
-                    <button onclick="addNewOptionToManager()" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 font-bold text-sm">新增</button>
+                    <input type="text" id="newOptionInput" class="flex-1 border rounded px-2 py-1 text-sm" placeholder="新選項名稱...">
+                    <button onclick="addNewOptionToManager()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm font-bold">新增</button>
                 </div>
-                <div id="optionListContainer" class="space-y-2"></div>
+                <div id="optionListContainer" class="space-y-1"></div>
             </div>
-
-            <div class="p-4 border-t bg-gray-100 rounded-b-lg text-right">
-                <button onclick="closeOptionManager()" class="bg-gray-800 text-white px-6 py-2 rounded hover:bg-gray-700 font-bold text-sm">完成並儲存</button>
+            <div class="p-3 border-t bg-gray-100 text-right rounded-b-lg">
+                <button onclick="closeOptionManager()" class="bg-gray-800 text-white px-4 py-1.5 rounded text-sm font-bold">完成</button>
             </div>
         </div>
     </div>
 
 <script>
-    document.addEventListener('contextmenu', event => event.preventDefault());
-    document.addEventListener('keydown', function(e) {
-        if(e.keyCode == 123) { return false; } 
-        if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)){ return false; } 
-        if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)){ return false; } 
-        if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)){ return false; } 
-        if(e.ctrlKey && e.keyCode == 'S'.charCodeAt(0)){ e.preventDefault(); alert("請使用左上角的「儲存收據」按鈕！"); return false; } 
-    });
-
     const firms = {
         yicheng: {
-            name: "易丞地政士事務所",
-            id: "92367068",
-            agent: "楊翊晟",
-            address: "台南市北區文賢路1080巷11號",
-            colorClass: "border-blue-800",
-            textClass: "text-blue-900",
-            headerBg: "bg-blue-50 border-l-blue-600"
+            name: "易丞地政士事務所", id: "92367068", agent: "楊翊晟", address: "台南市北區文賢路1080巷11號",
+            color: "#1e40af", bg: "#eff6ff", border: "border-blue-800"
         },
         hongguo: {
-            name: "宏國地政士事務所",
-            id: "97956971", /* 已更正為 97956971 */
-            agent: "楊明宗",
-            address: "台南市北區文賢路1080巷11號",
-            colorClass: "border-green-800",
-            textClass: "text-green-900",
-            headerBg: "bg-green-50 border-l-green-600"
+            name: "宏國地政士事務所", id: "97956971", agent: "楊明宗", address: "台南市北區文賢路1080巷11號",
+            color: "#166534", bg: "#f0fdf4", border: "border-green-800"
         }
     };
+    
+    const defaultServiceOpts = ["不動產移轉登記費", "抵押權設定代辦費", "水電過戶代辦費", "簽約費", "實價登錄費", "代辦住址隱匿及地籍異動即時通", "使用分區", "天然瓦斯過戶代辦費"];
+    const defaultTaxOpts = ["土地及建物登記規費", "書狀費", "設定規費", "土地契約印花稅", "建物契約印花稅", "電費", "水費", "天然瓦斯費", "影印費", "謄本費", "分區使用證明申請費"];
 
-    const defaultServiceOpts = [
-        "不動產移轉登記費", "抵押權設定代辦費", "水電過戶代辦費", "簽約費", 
-        "實價登錄費", "代辦住址隱匿及地籍異動即時通", "使用分區", "天然瓦斯過戶代辦費"
-    ];
-    const defaultTaxOpts = [
-        "土地及建物登記規費", "書狀費", "設定規費", "土地契約印花稅", 
-        "建物契約印花稅", "電費", "水費", "天然瓦斯費", "影印費", "謄本費", "分區使用證明申請費"
-    ];
-
-    let currentServiceOpts = [];
-    let currentTaxOpts = [];
-    let serviceItems = [{ name: "不動產移轉登記費", price: 0 }];
-    let taxItems = [{ name: "土地及建物登記規費", price: 0 }];
+    let currentServiceOpts = [], currentTaxOpts = [];
+    let serviceItems = [{name: "不動產移轉登記費", price: 0}], taxItems = [{name: "土地及建物登記規費", price: 0}];
     let currentEditType = 'service';
 
     function init() {
         const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        const dateInput = document.getElementById('inputDate');
-        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        document.getElementById('inputDate').value = today.toISOString().split('T')[0];
+        updateDateDisplay(document.getElementById('inputDate').value);
         
-        updateDateDisplay(dateInput.value);
         loadOptionsLocally();
         setupLiveUpdates();
         updateView();
         toggleStampMode();
-        setupAutoResize();
-        document.getElementById('inputNotes').dispatchEvent(new Event('input'));
+        setTimeout(autoFitContent, 500); 
     }
 
-    function updateDateDisplay(dateValue) {
-        if (!dateValue) {
-            document.getElementById('displayDate').innerText = "";
-            return;
-        }
-        const d = new Date(dateValue);
-        if(!isNaN(d.getTime())) {
-            const rocYear = d.getFullYear() - 1911;
-            const rocDateStr = `${rocYear}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
-            document.getElementById('displayDate').innerText = rocDateStr;
-        } else {
-            document.getElementById('displayDate').innerText = "";
-        }
-    }
-
-    function setupAutoResize() {
+    function autoFitContent() {
         const paper = document.getElementById('paper');
-        const container = document.getElementById('paperWrapper');
-        function resizePaper() {
-            if (window.matchMedia('print').matches) return;
-            const containerWidth = container.clientWidth;
-            const targetWidth = containerWidth - 40; 
-            const paperWidth = 210 * 3.78; 
-            let scale = Math.min(targetWidth / paperWidth, 1);
-            if(scale < 0) scale = 0.1;
-            paper.style.transform = `scale(${scale})`;
-            const paperHeight = 297 * 3.78; 
-            paper.style.marginBottom = `-${paperHeight * (1 - scale)}px`; 
+        const content = document.getElementById('scalableContent');
+        const maxHeight = paper.clientHeight - 40; 
+        
+        content.style.transform = `scale(1)`;
+        
+        const contentHeight = content.scrollHeight;
+        if (contentHeight > maxHeight) {
+            const scale = maxHeight / contentHeight;
+            const finalScale = Math.max(scale, 0.65); 
+            content.style.transform = `scale(${finalScale})`;
         }
-        window.addEventListener('resize', resizePaper);
-        setTimeout(resizePaper, 100);
-        const observer = new ResizeObserver(resizePaper);
-        observer.observe(container);
     }
 
-    function syncCurrentValues() {
-        serviceItems.forEach((item, index) => {
-            const elName = document.getElementById(`input-service-${index}`);
-            const elPrice = document.getElementById(`price-service-${index}`);
-            if(elName) item.name = elName.value;
-            if(elPrice) item.price = Number(elPrice.value);
-        });
+    const observeDOM = (function(){
+        const MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
+        return function( obj, callback ){
+            if( !obj || !obj.nodeType === 1 ) return; 
+            if( MutationObserver ){
+                const obs = new MutationObserver(function(mutations, observer){ callback(mutations); });
+                obs.observe( obj, { childList:true, subtree:true, attributes: true } );
+            }
+            else if( window.addEventListener ){
+                obj.addEventListener('DOMNodeInserted', callback, false);
+                obj.addEventListener('DOMNodeRemoved', callback, false);
+            }
+        }
+    })();
 
-        taxItems.forEach((item, index) => {
-            const elName = document.getElementById(`input-tax-${index}`);
-            const elPrice = document.getElementById(`price-tax-${index}`);
-            if(elName) item.name = elName.value;
-            if(elPrice) item.price = Number(elPrice.value);
-        });
-    }
-
-    function loadOptionsLocally() {
-        const storedS = localStorage.getItem('serviceOpts_v3');
-        const storedT = localStorage.getItem('taxOpts_v3');
-        currentServiceOpts = (storedS && JSON.parse(storedS).length > 0) ? JSON.parse(storedS) : [...defaultServiceOpts];
-        currentTaxOpts = (storedT && JSON.parse(storedT).length > 0) ? JSON.parse(storedT) : [...defaultTaxOpts];
-        refreshLists();
-    }
-
-    function saveOptionsLocally() {
-        localStorage.setItem('serviceOpts_v3', JSON.stringify(currentServiceOpts));
-        localStorage.setItem('taxOpts_v3', JSON.stringify(currentTaxOpts));
-    }
-
-    function refreshLists() {
-        renderInputList('service', serviceItems);
-        renderInputList('tax', taxItems);
-    }
-
-    window.openOptionManager = function(type) {
-        currentEditType = type;
-        const modal = document.getElementById('modalManager');
-        const title = document.getElementById('modalTitle');
-        modal.classList.remove('hidden');
-        title.innerText = type === 'service' ? '管理：地政士代辦費選項' : '管理：代納規費選項';
-        renderManagerList();
-    }
-
-    window.closeOptionManager = function() {
-        document.getElementById('modalManager').classList.add('hidden');
-        refreshLists();
-    }
-
-    function renderManagerList() {
-        const listContainer = document.getElementById('optionListContainer');
-        const opts = currentEditType === 'service' ? currentServiceOpts : currentTaxOpts;
-        listContainer.innerHTML = '';
-        opts.forEach((opt, index) => {
-            const div = document.createElement('div');
-            div.className = "flex justify-between items-center bg-white p-2 border rounded hover:bg-gray-50";
-            div.innerHTML = `
-                <span class="text-sm font-medium">${opt}</span>
-                <button onclick="removeOptionFromManager(${index})" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash-alt"></i></button>
-            `;
-            listContainer.appendChild(div);
-        });
-    }
-
-    window.addNewOptionToManager = function() {
-        const input = document.getElementById('newOptionInput');
-        const val = input.value.trim();
-        if(!val) return;
-        if(currentEditType === 'service') currentServiceOpts.push(val);
-        else currentTaxOpts.push(val);
-        saveOptionsLocally();
-        renderManagerList();
-        input.value = '';
-    }
-
-    window.removeOptionFromManager = function(index) {
-        if(!confirm('確定要刪除這個預設選項嗎？')) return;
-        if(currentEditType === 'service') currentServiceOpts.splice(index, 1);
-        else currentTaxOpts.splice(index, 1);
-        saveOptionsLocally();
-        renderManagerList();
-    }
+    observeDOM( document.getElementById('scalableContent'), function(){ 
+        clearTimeout(window.resizeTimer);
+        window.resizeTimer = setTimeout(autoFitContent, 100);
+    });
 
     function updateView() {
         const firmKey = document.querySelector('input[name="firm"]:checked').value;
         const data = firms[firmKey];
+        
+        document.getElementById('firmName').innerText = data.name;
+        document.getElementById('firmName').style.color = data.color;
+        document.getElementById('headerBorder').className = `flex justify-between items-end border-b-4 pb-2 mb-3 ${data.border}`;
         document.getElementById('firmAddress').innerText = data.address;
-        const titleEl = document.getElementById('firmName');
-        titleEl.innerText = data.name;
-        titleEl.className = `text-3xl font-black serif tracking-wider ${data.textClass}`;
-        document.getElementById('headerBorder').className = `border-b-4 pb-2 mb-4 compact-mb flex justify-between items-end ${data.colorClass}`;
+        
         document.getElementById('stampFirmName').innerText = data.name;
         document.getElementById('stampId').innerText = data.id;
         document.getElementById('stampAgent').innerText = data.agent;
-        document.getElementById('sectionHeader1').className = `flex items-center mb-1 p-1 border-l-4 ${data.headerBg}`;
-        document.getElementById('sectionHeader2').className = `flex items-center mb-1 p-1 border-l-4 ${data.headerBg}`;
+        
+        document.getElementById('headerService').style.color = data.color;
+        document.getElementById('headerService').style.borderColor = data.color;
+        document.getElementById('headerTax').style.color = data.color;
+        document.getElementById('headerTax').style.borderColor = data.color;
+
         calculateTotal();
     }
 
-    function setupLiveUpdates() {
-        document.getElementById('inputDate').addEventListener('input', (e) => {
-            updateDateDisplay(e.target.value);
-        });
-        ['inputClient', 'inputTarget', 'inputNotes', 'inputClientId'].forEach(id => {
-            document.getElementById(id).addEventListener('input', (e) => {
-                const targetId = id.replace('input', 'display');
-                if(document.getElementById(targetId)) document.getElementById(targetId).innerText = e.target.value;
-            });
-            const targetId = id.replace('input', 'display');
-            if(document.getElementById(targetId)) document.getElementById(targetId).innerText = document.getElementById(id).value;
-        });
-    }
-
-    window.handleNameInput = function(type, index, inputElement) {
-        updateItem(type, index, 'name', inputElement.value);
-        const list = document.getElementById(`list-${type}-${index}`);
-        const options = type === 'service' ? currentServiceOpts : currentTaxOpts;
-        filterOptions(inputElement, list, options);
-    }
-
-    function renderInputList(type, dataArray) {
-        const container = document.getElementById(type + 'Items');
-        container.innerHTML = '';
-        dataArray.forEach((item, index) => {
-            const row = document.createElement('div');
-            row.className = "flex gap-2 items-start mb-2 relative row-inactive"; 
-            row.id = `row-${type}-${index}`;
-            row.innerHTML = `
-                <div class="relative flex-grow group">
-                    <input type="text" id="input-${type}-${index}" value="${item.name}" 
-                           oninput="handleNameInput('${type}', ${index}, this)"
-                           onfocus="handleNameInput('${type}', ${index}, this)"
-                           class="w-full border rounded p-1.5 pl-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all bg-white" 
-                           placeholder="輸入名稱或選擇..." autocomplete="off">
-                    <div id="list-${type}-${index}" class="autocomplete-suggestions"></div>
-                </div>
-                <input type="number" id="price-${type}-${index}" value="${item.price}" 
-                       oninput="updateItem('${type}', ${index}, 'price', this.value)" 
-                       class="w-24 border rounded p-1.5 text-sm text-right focus:ring-2 focus:ring-blue-400 outline-none" placeholder="$">
-                <button onclick="removeItem('${type}', ${index})" class="text-gray-300 hover:text-red-500 w-8 pt-1 transition"><i class="fas fa-trash-alt"></i></button>
-            `;
-            container.appendChild(row);
-        });
-    }
-
-    function filterOptions(input, list, options) {
-        const val = input.value.toLowerCase();
-        list.innerHTML = '';
-        let matchCount = 0;
-        options.forEach(opt => {
-            if (opt.toLowerCase().includes(val)) {
-                const div = document.createElement('div');
-                const regex = new RegExp(`(${val})`, 'gi');
-                const highlighted = val ? opt.replace(regex, '<span class="font-bold text-blue-600">$1</span>') : opt;
-                div.innerHTML = highlighted;
-                div.onmousedown = (e) => {
-                    e.preventDefault();
-                    input.value = opt;
-                    const [,, typeStr, idxStr] = input.id.split('-');
-                    updateItem(typeStr, parseInt(idxStr), 'name', opt);
-                    list.style.display = 'none';
-                    input.classList.remove('has-suggestions');
-                };
-                list.appendChild(div);
-                matchCount++;
-            }
-        });
-        if (matchCount > 0 && document.activeElement === input) {
-            list.style.display = 'block';
-            input.classList.add('has-suggestions');
-            const row = input.closest('div[id^="row-"]');
-            if(row) { row.classList.remove('row-inactive'); row.classList.add('row-active'); }
-        } else {
-            list.style.display = 'none';
-            input.classList.remove('has-suggestions');
-        }
-    }
-
-    function closeAllLists(e) {
-        const lists = document.getElementsByClassName("autocomplete-suggestions");
-        for (let i = 0; i < lists.length; i++) {
-            const input = lists[i].parentElement.querySelector('input');
-            if (e.target !== input) {
-                lists[i].style.display = "none";
-                if(input) input.classList.remove('has-suggestions');
-                const row = lists[i].closest('div[id^="row-"]');
-                if(row) { row.classList.remove('row-active'); row.classList.add('row-inactive'); }
-            }
-        }
-    }
-
-    window.addItem = function(type) {
-        syncCurrentValues();
-        const arr = type === 'service' ? serviceItems : taxItems;
-        arr.push({ name: "", price: "" });
-        renderInputList(type, arr);
-    }
-
-    window.removeItem = function(type, index) {
-        syncCurrentValues();
-        const arr = type === 'service' ? serviceItems : taxItems;
-        arr.splice(index, 1);
-        renderInputList(type, arr);
-        calculateTotal();
-    }
-
-    window.updateItem = function(type, index, field, value) {
-        const arr = type === 'service' ? serviceItems : taxItems;
-        arr[index][field] = field === 'price' ? Number(value) : value;
-        calculateTotal();
-    }
-
-    window.calculateTotal = function() {
-        const sTotal = serviceItems.reduce((acc, item) => acc + (Number(item.price)||0), 0);
-        const tTotal = taxItems.reduce((acc, item) => acc + (Number(item.price)||0), 0);
+    function calculateTotal() {
+        const sTotal = serviceItems.reduce((acc, i) => acc + (Number(i.price)||0), 0);
+        const tTotal = taxItems.reduce((acc, i) => acc + (Number(i.price)||0), 0);
         
         const dAmount = Number(document.getElementById('discountAmount').value) || 0;
-        const dName = document.getElementById('discountName').value;
         const finalServiceTotal = sTotal - dAmount;
 
         const adjustAmount = Number(document.getElementById('adjustAmount').value) || 0;
-        const adjustName = document.getElementById('adjustName').value;
         const prepayAmount = Number(document.getElementById('prepayAmount').value) || 0;
 
         const rawGrandTotal = finalServiceTotal + tTotal + adjustAmount - prepayAmount;
-
-        const clientType = document.querySelector('input[name="clientType"]:checked').value;
-        const isCompany = clientType === 'company';
-        const displayClientType = document.getElementById('displayClientType');
+        const isCompany = document.querySelector('input[name="clientType"]:checked').value === 'company';
         
-        const normalTotalBox = document.getElementById('normalTotalBox');
-        const companyTaxBox = document.getElementById('companyTaxBox');
-        
-        let taxDeduction = 0;
-
-        if (isCompany) {
-            displayClientType.innerText = "公司行號";
-            if (finalServiceTotal > 20000) {
-                taxDeduction = Math.round(finalServiceTotal * 0.1);
-                normalTotalBox.classList.add('hidden');
-                companyTaxBox.classList.remove('hidden');
-                document.getElementById('rawTotalAmount').innerText = formatCurrency(rawGrandTotal);
-                document.getElementById('taxDeductionAmount').innerText = '-' + formatCurrency(taxDeduction);
-                document.getElementById('netTotalAmount').innerText = formatCurrency(rawGrandTotal - taxDeduction);
-            } else {
-                normalTotalBox.classList.remove('hidden');
-                companyTaxBox.classList.add('hidden');
-                document.getElementById('grandTotal').innerText = formatCurrency(rawGrandTotal);
-            }
-        } else {
-            displayClientType.innerText = "個人 / 一般";
-            normalTotalBox.classList.remove('hidden');
-            companyTaxBox.classList.add('hidden');
-            document.getElementById('grandTotal').innerText = formatCurrency(rawGrandTotal);
-        }
-
-        renderPreviewTable('displayServiceRows', serviceItems);
-        renderPreviewTable('displayTaxRows', taxItems);
-
-        const discountRow = document.getElementById('displayDiscountRow');
-        if (dAmount > 0) {
-            discountRow.classList.remove('hidden');
-            document.getElementById('dName').innerText = dName;
-            document.getElementById('dAmount').innerText = formatCurrency(dAmount);
-        } else {
-            discountRow.classList.add('hidden');
-        }
-
-        const rowAdjust = document.getElementById('rowAdjust');
-        const txtAdjustAmount = document.getElementById('txtAdjustAmount');
-
-        if (adjustAmount !== 0) {
-            rowAdjust.classList.remove('hidden');
-            rowAdjust.classList.remove('text-blue-700', 'text-red-600'); 
-            document.getElementById('txtAdjustName').innerText = adjustName;
-            if (adjustAmount < 0) {
-                rowAdjust.classList.add('text-red-600');
-                txtAdjustAmount.innerText = formatCurrency(adjustAmount);
-            } else {
-                rowAdjust.classList.add('text-blue-700');
-                txtAdjustAmount.innerText = '+' + formatCurrency(adjustAmount);
-            }
-        } else {
-            rowAdjust.classList.add('hidden');
-        }
-
-        const rowPrepay = document.getElementById('rowPrepay');
-        if (prepayAmount > 0) {
-            rowPrepay.classList.remove('hidden');
-            document.getElementById('txtPrepayAmount').innerText = '-' + formatCurrency(prepayAmount);
-        } else {
-            rowPrepay.classList.add('hidden');
-        }
-
         document.getElementById('totalService').innerText = formatCurrency(finalServiceTotal);
         document.getElementById('totalTax').innerText = formatCurrency(tTotal);
+
+        const dRow = document.getElementById('displayDiscountRow');
+        if(dAmount > 0) {
+            dRow.classList.remove('hidden');
+            document.getElementById('dName').innerText = document.getElementById('discountName').value;
+            document.getElementById('dAmount').innerText = formatCurrency(dAmount);
+        } else {
+            dRow.classList.add('hidden');
+        }
+
+        const rAdj = document.getElementById('rowAdjust');
+        const tAdj = document.getElementById('txtAdjustAmount');
+        if(adjustAmount !== 0) {
+            rAdj.classList.remove('hidden');
+            rAdj.className = adjustAmount < 0 ? "text-red-600 font-bold" : "text-blue-700 font-bold";
+            document.getElementById('txtAdjustName').innerText = document.getElementById('adjustName').value + ":";
+            tAdj.innerText = (adjustAmount>0?'+':'') + formatCurrency(adjustAmount);
+        } else {
+            rAdj.classList.add('hidden');
+        }
+
+        const rPre = document.getElementById('rowPrepay');
+        if(prepayAmount > 0) {
+            rPre.classList.remove('hidden');
+            document.getElementById('txtPrepayAmount').innerText = '-' + formatCurrency(prepayAmount);
+        } else {
+            rPre.classList.add('hidden');
+        }
+
+        const normalBox = document.getElementById('normalTotalBox');
+        const companyBox = document.getElementById('companyTaxBox');
+
+        if(isCompany && finalServiceTotal > 20000) {
+            normalBox.classList.add('hidden');
+            companyBox.classList.remove('hidden');
+            const tax = Math.round(finalServiceTotal * 0.1);
+            document.getElementById('rawTotalAmount').innerText = formatCurrency(rawGrandTotal);
+            document.getElementById('taxDeductionAmount').innerText = '-' + formatCurrency(tax);
+            document.getElementById('netTotalAmount').innerText = formatCurrency(rawGrandTotal - tax);
+            document.getElementById('displayClientType').innerText = "公司行號";
+        } else {
+            normalBox.classList.remove('hidden');
+            companyBox.classList.add('hidden');
+            document.getElementById('grandTotal').innerText = formatCurrency(rawGrandTotal);
+            document.getElementById('displayClientType').innerText = isCompany ? "公司行號" : "個人";
+        }
+
+        renderRows('displayServiceRows', serviceItems);
+        renderRows('displayTaxRows', taxItems);
+        autoFitContent();
     }
 
-    function renderPreviewTable(elementId, data) {
-        const tbody = document.getElementById(elementId);
+    function renderRows(id, items) {
+        const tbody = document.getElementById(id);
         tbody.innerHTML = '';
-        data.forEach(item => {
-            if (!item.name && !item.price) return;
+        items.forEach(item => {
+            if(!item.name && !item.price) return;
             const tr = document.createElement('tr');
-            tr.className = "border-b border-gray-100 compact-row";
-            tr.innerHTML = `
-                <td class="pl-2">${item.name}</td>
-                <td class="text-right font-medium">${item.price ? formatCurrency(item.price) : '-'}</td>
-            `;
+            tr.innerHTML = `<td>${item.name}</td><td class="amount-col">${item.price ? formatCurrency(item.price) : '-'}</td>`;
             tbody.appendChild(tr);
         });
     }
 
-    function formatCurrency(num) {
-        return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(num).replace('TWD', '$');
+    function setupLiveUpdates() {
+        document.getElementById('inputDate').addEventListener('input', (e) => updateDateDisplay(e.target.value));
+        ['inputClient','inputClientId','inputTarget','inputNotes'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                document.getElementById(id.replace('input','display')).innerText = e.target.value;
+                autoFitContent(); 
+            });
+             document.getElementById(id.replace('input','display')).innerText = document.getElementById(id).value;
+        });
     }
 
-    function toggleStampMode() {
-        const mode = document.querySelector('input[name="printMode"]:checked').value;
-        const paper = document.getElementById('paper');
-        if (mode === 'print') paper.classList.add('print-mode-active');
-        else paper.classList.remove('print-mode-active');
+    function syncInputs() {
+        serviceItems.forEach((item, i) => {
+            const n = document.getElementById(`in-service-name-${i}`);
+            const p = document.getElementById(`in-service-price-${i}`);
+            if(n) item.name = n.value;
+            if(p) item.price = Number(p.value);
+        });
+        taxItems.forEach((item, i) => {
+            const n = document.getElementById(`in-tax-name-${i}`);
+            const p = document.getElementById(`in-tax-price-${i}`);
+            if(n) item.name = n.value;
+            if(p) item.price = Number(p.value);
+        });
     }
 
-    function saveCase() {
-        syncCurrentValues();
+    function renderEditor(type) {
+        const arr = type === 'service' ? serviceItems : taxItems;
+        const container = document.getElementById(type+'Items');
+        container.innerHTML = '';
+        arr.forEach((item, i) => {
+            const div = document.createElement('div');
+            // row-wrapper active-row 是修復 z-index 關鍵
+            div.className = "flex gap-1 items-center mb-1 row-wrapper";
+            div.innerHTML = `
+                <div class="relative flex-1">
+                    <input type="text" id="in-${type}-name-${i}" value="${item.name}" 
+                        class="w-full border rounded px-2 py-1 text-sm focus:bg-blue-50 outline-none transition" placeholder="項目名稱"
+                        oninput="handleEditorInput('${type}', ${i}, 'name', this)"
+                        onfocus="showSuggest('${type}', ${i}, this)" 
+                        onblur="setTimeout(() => hideSuggest('${type}', ${i}), 200)"
+                        autocomplete="off">
+                    <div id="sug-${type}-${i}" class="autocomplete-suggestions"></div>
+                </div>
+                <input type="number" id="in-${type}-price-${i}" value="${item.price}" 
+                    class="w-20 border rounded px-2 py-1 text-sm text-right outline-none focus:bg-blue-50 transition" placeholder="$"
+                    oninput="handleEditorInput('${type}', ${i}, 'price', this)">
+                <button onclick="delItem('${type}', ${i})" class="text-gray-400 hover:text-red-500 w-6"><i class="fas fa-times"></i></button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    window.addItem = function(type) {
+        syncInputs();
+        (type==='service'?serviceItems:taxItems).push({name:"", price:""});
+        renderEditor(type);
+    }
+    window.delItem = function(type, i) {
+        syncInputs();
+        (type==='service'?serviceItems:taxItems).splice(i, 1);
+        renderEditor(type);
+        calculateTotal();
+    }
+    window.handleEditorInput = function(type, i, field, el) {
+        const arr = type === 'service' ? serviceItems : taxItems;
+        arr[i][field] = field === 'price' ? Number(el.value) : el.value;
+        if(field === 'name') showSuggest(type, i, el); 
+        calculateTotal();
+    }
+
+    window.showSuggest = function(type, i, input) {
+        const list = document.getElementById(`sug-${type}-${i}`);
+        const opts = type === 'service' ? currentServiceOpts : currentTaxOpts;
+        const val = input.value.toLowerCase();
+        list.innerHTML = '';
+        let count = 0;
+        opts.forEach(opt => {
+            if(opt.toLowerCase().includes(val)) {
+                const d = document.createElement('div');
+                d.innerHTML = opt.replace(new RegExp(`(${val})`,'gi'), '<b class="text-blue-600">$1</b>');
+                d.onmousedown = (e) => {
+                    e.preventDefault(); // 防止失去焦點
+                    input.value = opt;
+                    handleEditorInput(type, i, 'name', input);
+                    list.style.display = 'none';
+                    input.closest('.row-wrapper').classList.remove('active-row');
+                };
+                list.appendChild(d);
+                count++;
+            }
+        });
+        
+        if (count > 0 && document.activeElement === input) {
+            list.style.display = 'block';
+            // 強制提升層級，這是解決「跳掉」的關鍵
+            document.querySelectorAll('.active-row').forEach(el=>el.classList.remove('active-row'));
+            input.closest('.row-wrapper').classList.add('active-row');
+        } else {
+            list.style.display = 'none';
+            input.closest('.row-wrapper').classList.remove('active-row');
+        }
+    }
+    
+    window.hideSuggest = function(type, i) {
+        const list = document.getElementById(`sug-${type}-${i}`);
+        if(list) list.style.display = 'none';
+        const row = list.closest('.row-wrapper');
+        if(row) row.classList.remove('active-row');
+    }
+
+    function closeAllLists(e) {
+        if(!e.target.closest('.row-wrapper')) {
+            document.querySelectorAll('.autocomplete-suggestions').forEach(el => el.style.display='none');
+            document.querySelectorAll('.active-row').forEach(el => el.classList.remove('active-row'));
+        }
+    }
+
+    function loadOptionsLocally() {
+        const s = localStorage.getItem('serviceOpts_v4');
+        const t = localStorage.getItem('taxOpts_v4');
+        currentServiceOpts = s ? JSON.parse(s) : [...defaultServiceOpts];
+        currentTaxOpts = t ? JSON.parse(t) : [...defaultTaxOpts];
+        refreshEditors();
+    }
+    function saveOptionsLocally() {
+        localStorage.setItem('serviceOpts_v4', JSON.stringify(currentServiceOpts));
+        localStorage.setItem('taxOpts_v4', JSON.stringify(currentTaxOpts));
+    }
+    function refreshEditors() { renderEditor('service'); renderEditor('tax'); }
+
+    window.saveCase = function() {
+        syncInputs();
         const data = {
             firm: document.querySelector('input[name="firm"]:checked').value,
             clientType: document.querySelector('input[name="clientType"]:checked').value,
@@ -871,115 +655,120 @@
             client: document.getElementById('inputClient').value,
             target: document.getElementById('inputTarget').value,
             notes: document.getElementById('inputNotes').value,
-            serviceItems: serviceItems,
-            taxItems: taxItems,
+            serviceItems, taxItems,
             discountName: document.getElementById('discountName').value,
             discountAmount: document.getElementById('discountAmount').value,
             adjustName: document.getElementById('adjustName').value,
             adjustAmount: document.getElementById('adjustAmount').value,
             prepayAmount: document.getElementById('prepayAmount').value
         };
-        downloadJson(data, `收據_${data.client}_${data.date.replace(/-/g,'')}.json`);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"}));
+        a.download = `收據_${data.client}_${data.date.replace(/-/g,'')}.json`;
+        a.click();
     }
 
-    /* Smart Load: 自動合併新選項 */
-    function loadCase(input) {
+    window.loadCase = function(input) {
         const file = input.files[0];
-        if (!file) return;
+        if(!file) return;
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = (e) => {
             try {
-                const data = JSON.parse(e.target.result);
-                
-                // 相容性檢查：如果是設定檔，提示用戶
-                if (data.serviceOpts && !data.firm) {
-                    if(confirm("【系統提示】這是「設定備份檔」而非案件檔，是否要更新下拉選單？")) {
-                        if(data.serviceOpts) currentServiceOpts = data.serviceOpts;
-                        if(data.taxOpts) currentTaxOpts = data.taxOpts;
+                const d = JSON.parse(e.target.result);
+                if(d.serviceOpts && !d.firm) { 
+                    if(confirm("這是設定檔，要匯入選項嗎？")) {
+                        currentServiceOpts = d.serviceOpts; currentTaxOpts = d.taxOpts;
                         saveOptionsLocally();
-                        refreshLists();
                     }
                     return;
                 }
-
-                if(data.firm) {
-                    const firmRadio = document.querySelector(`input[name="firm"][value="${data.firm}"]`);
-                    if(firmRadio) firmRadio.checked = true;
-                }
-                if(data.clientType) {
-                    const clientTypeRadio = document.querySelector(`input[name="clientType"][value="${data.clientType}"]`);
-                    if(clientTypeRadio) clientTypeRadio.checked = true;
-                }
-                
-                document.getElementById('inputDate').value = data.date || '';
-                if(data.date) updateDateDisplay(data.date);
-                document.getElementById('inputClientId').value = data.clientId || '';
-                document.getElementById('inputClient').value = data.client || '';
-                document.getElementById('inputTarget').value = data.target || '';
-                document.getElementById('inputNotes').value = data.notes || '';
-                document.getElementById('discountName').value = data.discountName || "折扣";
-                document.getElementById('discountAmount').value = data.discountAmount || 0;
-                document.getElementById('adjustName').value = data.adjustName || "稅費找補";
-                document.getElementById('adjustAmount').value = data.adjustAmount || 0;
-                document.getElementById('prepayAmount').value = data.prepayAmount || 0;
-                
-                serviceItems = Array.isArray(data.serviceItems) ? data.serviceItems : [];
-                taxItems = Array.isArray(data.taxItems) ? data.taxItems : [];
-                
-                // --- 自動記憶學習 ---
-                let newOptionsAdded = false;
-                serviceItems.forEach(item => {
-                    if (item.name && item.name.trim() !== "" && !currentServiceOpts.includes(item.name)) {
-                        currentServiceOpts.push(item.name);
-                        newOptionsAdded = true;
-                    }
+                if(d.firm) document.querySelector(`input[name="firm"][value="${d.firm}"]`).checked = true;
+                if(d.clientType) document.querySelector(`input[name="clientType"][value="${d.clientType}"]`).checked = true;
+                document.getElementById('inputDate').value = d.date || '';
+                updateDateDisplay(d.date);
+                ['inputClient','inputClientId','inputTarget','inputNotes'].forEach(id => {
+                    document.getElementById(id).value = d[id.replace('input','').charAt(0).toLowerCase() + id.replace('input','').slice(1)] || (id==='inputNotes'?d.notes:'');
                 });
-                taxItems.forEach(item => {
-                    if (item.name && item.name.trim() !== "" && !currentTaxOpts.includes(item.name)) {
-                        currentTaxOpts.push(item.name);
-                        newOptionsAdded = true;
-                    }
-                });
-                
-                if (newOptionsAdded) {
-                    saveOptionsLocally();
-                    console.log("系統已自動學習新項目！");
-                }
+                document.getElementById('discountName').value = d.discountName||"折扣";
+                document.getElementById('discountAmount').value = d.discountAmount||0;
+                document.getElementById('adjustName').value = d.adjustName||"稅費找補";
+                document.getElementById('adjustAmount').value = d.adjustAmount||0;
+                document.getElementById('prepayAmount').value = d.prepayAmount||0;
 
-                refreshLists();
+                serviceItems = d.serviceItems || [];
+                taxItems = d.taxItems || [];
+
+                let learned = false;
+                serviceItems.forEach(i => { if(i.name && !currentServiceOpts.includes(i.name)) { currentServiceOpts.push(i.name); learned=true; }});
+                taxItems.forEach(i => { if(i.name && !currentTaxOpts.includes(i.name)) { currentTaxOpts.push(i.name); learned=true; }});
+                if(learned) saveOptionsLocally();
+
+                refreshEditors();
                 updateView();
-                alert('案件讀取成功！(若有新項目，系統已自動記憶)');
-            } catch (err) { 
-                console.error(err);
-                alert('檔案格式錯誤或已損毀，無法還原。'); 
-            }
+                alert("讀取成功！");
+            } catch(err) { alert("檔案錯誤"); }
         };
         reader.readAsText(file);
-        input.value = ''; 
+        input.value = '';
     }
 
-    function downloadJson(data, filename) {
-        const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-    }
-    
-    function resetCase() {
-        if(!confirm("確定要清空目前內容並載入預設值嗎？")) return;
-        document.getElementById('inputClient').value = ""; 
-        document.getElementById('inputTarget').value = ""; 
-        document.getElementById('inputNotes').value = "◎若要辦理地價稅自用，請於9月22日前申請。\n◎若要辦理房屋稅自用，請於3月22日前申請。\n◎辦理自用稅率需先將戶籍遷入。\n◎上列地政士代辦費，本事務所列為執行業務收入，若付款人為中華民國境內之公司行號或機關團體，請依法扣繳10%稅款 ，並開立扣繳憑單予本事務所。";
-        serviceItems = [{name: "", price: ""}];
-        taxItems = [{name: "", price: ""}];
+    window.resetCase = function() {
+        if(!confirm("確定要開啟新案件嗎？")) return;
+        document.getElementById('inputClient').value = "";
+        document.getElementById('inputTarget').value = "";
+        serviceItems = [{name:"", price:0}];
+        taxItems = [{name:"", price:0}];
         document.getElementById('discountAmount').value = 0;
         document.getElementById('adjustAmount').value = 0;
         document.getElementById('prepayAmount').value = 0;
-        refreshLists();
+        refreshEditors();
         updateView();
-        document.getElementById('inputNotes').dispatchEvent(new Event('input'));
+        document.getElementById('inputNotes').value = "◎若要辦理地價稅自用，請於9月22日前申請。\n◎若要辦理房屋稅自用，請於3月22日前申請。\n◎辦理自用稅率需先將戶籍遷入。\n◎上列地政士代辦費，本事務所列為執行業務收入，若付款人為中華民國境內之公司行號或機關團體，請依法扣繳10%稅款 ，並開立扣繳憑單予本事務所。";
+        document.getElementById('displayNotes').innerText = document.getElementById('inputNotes').value;
+    }
+
+    window.openOptionManager = function(type) {
+        currentEditType = type;
+        document.getElementById('modalManager').classList.remove('hidden');
+        document.getElementById('modalTitle').innerText = type==='service'?'管理代辦費選項':'管理規費選項';
+        renderManagerOpts();
+    }
+    window.closeOptionManager = function() {
+        document.getElementById('modalManager').classList.add('hidden');
+        refreshEditors();
+    }
+    function renderManagerOpts() {
+        const c = document.getElementById('optionListContainer');
+        const opts = currentEditType==='service'?currentServiceOpts:currentTaxOpts;
+        c.innerHTML = '';
+        opts.forEach((o, i) => {
+            const d = document.createElement('div');
+            d.className = "flex justify-between items-center bg-white border rounded px-2 py-1";
+            d.innerHTML = `<span>${o}</span><button onclick="delMgrOpt(${i})" class="text-red-500"><i class="fas fa-trash"></i></button>`;
+            c.appendChild(d);
+        });
+    }
+    window.addNewOptionToManager = function() {
+        const inp = document.getElementById('newOptionInput');
+        if(!inp.value) return;
+        (currentEditType==='service'?currentServiceOpts:currentTaxOpts).push(inp.value);
+        saveOptionsLocally(); renderManagerOpts(); inp.value='';
+    }
+    window.delMgrOpt = function(i) {
+        if(!confirm("刪除此選項？")) return;
+        (currentEditType==='service'?currentServiceOpts:currentTaxOpts).splice(i,1);
+        saveOptionsLocally(); renderManagerOpts();
+    }
+
+    function updateDateDisplay(val) {
+        if(!val) return;
+        const d = new Date(val);
+        document.getElementById('displayDate').innerText = `${d.getFullYear()-1911}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function formatCurrency(n) { return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',minimumFractionDigits:0}).format(n).replace('TWD','$'); }
+    function toggleStampMode() {
+        const mode = document.querySelector('input[name="printMode"]:checked').value;
+        document.getElementById('paper').classList.toggle('print-mode-active', mode==='print');
     }
 
     init();
