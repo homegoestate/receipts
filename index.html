@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業地政士費用結算系統 (Nexus Ultimate Edition)</title>
+    <title>專業地政士費用結算系統 (Nexus Ultimate Edition v2)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -462,7 +462,7 @@
         },
         hongguo: {
             name: "宏國地政士事務所",
-            id: "16241270",
+            id: "97956971", /* 已更正為 97956971 */
             agent: "楊明宗",
             address: "台南市北區文賢路1080巷11號",
             colorClass: "border-green-800",
@@ -882,10 +882,7 @@
         downloadJson(data, `收據_${data.client}_${data.date.replace(/-/g,'')}.json`);
     }
 
-    /* Smart Load: 自動合併新選項 
-       1. 讀取案件內容
-       2. 檢查案件裡面的項目名稱，如果下拉選單裡沒有，就自動加進去
-    */
+    /* Smart Load: 自動合併新選項 */
     function loadCase(input) {
         const file = input.files[0];
         if (!file) return;
@@ -929,7 +926,7 @@
                 serviceItems = Array.isArray(data.serviceItems) ? data.serviceItems : [];
                 taxItems = Array.isArray(data.taxItems) ? data.taxItems : [];
                 
-                // --- 自動記憶學習 (Auto-Learn Logic) ---
+                // --- 自動記憶學習 ---
                 let newOptionsAdded = false;
                 serviceItems.forEach(item => {
                     if (item.name && item.name.trim() !== "" && !currentServiceOpts.includes(item.name)) {
@@ -948,7 +945,6 @@
                     saveOptionsLocally();
                     console.log("系統已自動學習新項目！");
                 }
-                // --------------------------------------
 
                 refreshLists();
                 updateView();
