@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業地政士費用結算系統 (Nexus Ultimate Stable)</title>
+    <title>專業地政士費用結算系統 (Nexus Ultimate V2)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -30,11 +30,11 @@
         }
         .input-custom:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
 
-        /* --- 關鍵修復：智慧選單層級與樣式 --- */
+        /* --- 智慧選單層級 --- */
         .autocomplete-suggestions {
             position: absolute; 
             border: 1px solid #cbd5e1; 
-            z-index: 9999; /* 極高的層級 */
+            z-index: 9999; 
             top: 100%; left: 0; right: 0; 
             background-color: #ffffff;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -52,7 +52,6 @@
         }
         .autocomplete-suggestions div:hover { background-color: #eff6ff; color: #1d4ed8; }
         
-        /* 確保正在編輯的行層級最高 */
         .row-wrapper { position: relative; z-index: 10; }
         .row-wrapper.active-row { z-index: 50; }
 
@@ -89,6 +88,13 @@
             min-width: 110px; text-align: center;
         }
 
+        /* --- 關鍵修復：印章隱藏邏輯 --- */
+        /* 當父容器 #paper 擁有 .hide-stamp 類別時，隱藏印章 */
+        #paper.hide-stamp .stamp-visual {
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+
         @media print {
             @page { size: A4; margin: 0; }
             body * { visibility: hidden; }
@@ -99,6 +105,9 @@
             }
             #paper { box-shadow: none; margin: 0; transform: none !important; width: 100%; height: 100%; }
             .no-print { display: none !important; }
+            
+            /* 列印時強制套用隱藏邏輯 */
+            #paper.hide-stamp .stamp-visual { display: none !important; }
         }
     </style>
 </head>
@@ -106,7 +115,7 @@
 
     <div class="w-full md:w-[400px] bg-white border-r border-gray-300 flex flex-col z-20 shadow-2xl no-print h-full">
         <div class="p-4 bg-slate-800 text-white shrink-0">
-            <h2 class="font-bold text-xl mb-4 text-center tracking-wider"><i class="fas fa-file-invoice-dollar mr-2"></i>專業結算系統</h2>
+            <h2 class="font-bold text-xl mb-4 text-center tracking-wider"><i class="fas fa-file-invoice-dollar mr-2"></i>專業結算系統 V2</h2>
             <div class="grid grid-cols-2 gap-3 mb-3">
                 <button onclick="document.getElementById('caseInput').click()" class="bg-orange-600 hover:bg-orange-500 text-white py-2.5 rounded shadow font-bold transition flex items-center justify-center gap-2">
                     <i class="fas fa-folder-open"></i> 讀取舊檔
@@ -158,7 +167,7 @@
                 <div class="mt-2 flex items-center gap-2 bg-green-50 p-2 rounded border border-green-200">
                     <span class="text-green-700 text-xs font-bold">折扣</span>
                     <input type="text" id="discountName" value="老客戶優惠" class="flex-1 text-xs border rounded p-1">
-                    <input type="number" id="discountAmount" value="0" oninput="calculateTotal()" class="w-16 text-right text-xs border rounded p-1">
+                    <input type="text" id="discountAmount" value="0" onchange="applyMath(this)" class="w-16 text-right text-xs border rounded p-1">
                 </div>
             </div>
 
@@ -178,12 +187,12 @@
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-bold w-16">找補</span>
                         <input type="text" id="adjustName" value="稅費找補" class="flex-1 text-xs border rounded p-1">
-                        <input type="number" id="adjustAmount" value="0" oninput="calculateTotal()" class="w-16 text-right text-xs border rounded p-1">
+                        <input type="text" id="adjustAmount" value="0" onchange="applyMath(this)" class="w-16 text-right text-xs border rounded p-1">
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-bold w-16 text-red-600">預收</span>
                         <input type="text" value="預收規費" class="flex-1 text-xs border rounded p-1 bg-gray-100" disabled>
-                        <input type="number" id="prepayAmount" value="0" oninput="calculateTotal()" class="w-16 text-right text-xs border rounded p-1 text-red-600 font-bold">
+                        <input type="text" id="prepayAmount" value="0" onchange="applyMath(this)" class="w-16 text-right text-xs border rounded p-1 text-red-600 font-bold">
                     </div>
                 </div>
             </div>
@@ -199,8 +208,14 @@
 
         <div class="p-4 bg-white border-t shrink-0">
              <div class="flex justify-center gap-4 mb-2 text-xs">
-                <label class="flex items-center cursor-pointer"><input type="radio" name="printMode" value="pdf" checked onchange="toggleStampMode()" class="mr-1"> 存檔PDF (有章)</label>
-                <label class="flex items-center cursor-pointer"><input type="radio" name="printMode" value="print" onchange="toggleStampMode()" class="mr-1"> 直接列印 (無章)</label>
+                <label class="flex items-center cursor-pointer select-none">
+                    <input type="radio" name="printMode" value="pdf" checked onchange="toggleStampMode()" class="mr-1"> 
+                    存檔PDF (有章)
+                </label>
+                <label class="flex items-center cursor-pointer select-none">
+                    <input type="radio" name="printMode" value="print" onchange="toggleStampMode()" class="mr-1"> 
+                    直接列印 (無章)
+                </label>
             </div>
             <button onclick="window.print()" class="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg shadow font-bold text-lg transition">
                 <i class="fas fa-print mr-2"></i>輸出 / 列印
@@ -350,6 +365,39 @@
     </div>
 
 <script>
+    // --- 智能運算核心 ---
+    // 允許輸入 1000+500, 500*2 等運算式，自動計算結果
+    function safeCalculate(expression) {
+        if (!expression) return 0;
+        // 如果只是純數字，直接回傳
+        if (!isNaN(expression)) return parseFloat(expression);
+        
+        try {
+            // 安全過濾：只允許數字和運算符號
+            const sanitized = expression.toString().replace(/[^0-9+\-*/().]/g, '');
+            if (!sanitized) return 0;
+            // 使用 Function 建構式進行計算 (比 eval 安全一點，但仍需小心，這裡已過濾)
+            const result = new Function('return ' + sanitized)();
+            
+            // 如果結果不是數字 (例如除以0變無限大)，回傳0
+            if (!isFinite(result) || isNaN(result)) return 0;
+            return Math.round(result); // 取整數
+        } catch (e) {
+            console.warn("計算錯誤", e);
+            return 0; // 計算失敗回傳 0
+        }
+    }
+
+    // 綁定到 input 的輔助函式
+    window.applyMath = function(el) {
+        const val = el.value;
+        const res = safeCalculate(val);
+        el.value = res; // 更新欄位顯示運算後結果
+        calculateTotal(); // 觸發總計
+    }
+
+    // ----------------------
+
     const firms = {
         yicheng: {
             name: "易丞地政士事務所", id: "92367068", agent: "楊翊晟", address: "台南市北區文賢路1080巷11號",
@@ -437,6 +485,9 @@
     }
 
     function calculateTotal() {
+        // 先確保數據正確
+        syncInputs();
+
         const sTotal = serviceItems.reduce((acc, i) => acc + (Number(i.price)||0), 0);
         const tTotal = taxItems.reduce((acc, i) => acc + (Number(i.price)||0), 0);
         
@@ -540,6 +591,23 @@
         });
     }
 
+    // --- 新增：排序功能 ---
+    window.moveItem = function(type, index, direction) {
+        syncInputs(); // 先保存當前輸入
+        const arr = type === 'service' ? serviceItems : taxItems;
+        const newIndex = index + direction;
+        
+        // 邊界檢查
+        if (newIndex < 0 || newIndex >= arr.length) return;
+        
+        // 交換位置
+        [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+        
+        renderEditor(type);
+        calculateTotal();
+    }
+    // -------------------
+
     function renderEditor(type) {
         const arr = type === 'service' ? serviceItems : taxItems;
         const container = document.getElementById(type+'Items');
@@ -549,6 +617,10 @@
             // row-wrapper active-row 是修復 z-index 關鍵
             div.className = "flex gap-1 items-center mb-1 row-wrapper";
             div.innerHTML = `
+                <div class="flex flex-col gap-0.5 mr-1">
+                    <button onclick="moveItem('${type}', ${i}, -1)" class="text-[10px] bg-gray-200 hover:bg-gray-300 px-1 rounded h-4 flex items-center justify-center text-gray-600" title="上移"><i class="fas fa-chevron-up"></i></button>
+                    <button onclick="moveItem('${type}', ${i}, 1)" class="text-[10px] bg-gray-200 hover:bg-gray-300 px-1 rounded h-4 flex items-center justify-center text-gray-600" title="下移"><i class="fas fa-chevron-down"></i></button>
+                </div>
                 <div class="relative flex-1">
                     <input type="text" id="in-${type}-name-${i}" value="${item.name}" 
                         class="w-full border rounded px-2 py-1 text-sm focus:bg-blue-50 outline-none transition" placeholder="項目名稱"
@@ -558,9 +630,9 @@
                         autocomplete="off">
                     <div id="sug-${type}-${i}" class="autocomplete-suggestions"></div>
                 </div>
-                <input type="number" id="in-${type}-price-${i}" value="${item.price}" 
+                <input type="text" id="in-${type}-price-${i}" value="${item.price}" 
                     class="w-20 border rounded px-2 py-1 text-sm text-right outline-none focus:bg-blue-50 transition" placeholder="$"
-                    oninput="handleEditorInput('${type}', ${i}, 'price', this)">
+                    onchange="applyMath(this); handleEditorInput('${type}', ${i}, 'price', this)">
                 <button onclick="delItem('${type}', ${i})" class="text-gray-400 hover:text-red-500 w-6"><i class="fas fa-times"></i></button>
             `;
             container.appendChild(div);
@@ -609,7 +681,6 @@
         
         if (count > 0 && document.activeElement === input) {
             list.style.display = 'block';
-            // 強制提升層級，這是解決「跳掉」的關鍵
             document.querySelectorAll('.active-row').forEach(el=>el.classList.remove('active-row'));
             input.closest('.row-wrapper').classList.add('active-row');
         } else {
@@ -766,9 +837,16 @@
         document.getElementById('displayDate').innerText = `${d.getFullYear()-1911}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
     }
     function formatCurrency(n) { return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',minimumFractionDigits:0}).format(n).replace('TWD','$'); }
+    
     function toggleStampMode() {
         const mode = document.querySelector('input[name="printMode"]:checked').value;
-        document.getElementById('paper').classList.toggle('print-mode-active', mode==='print');
+        const paper = document.getElementById('paper');
+        
+        if (mode === 'print') {
+            paper.classList.add('hide-stamp');
+        } else {
+            paper.classList.remove('hide-stamp');
+        }
     }
 
     init();
