@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業地政士費用結算系統 (Nexus Ultimate V2)</title>
+    <title>宏國｜易丞地政 - 收據系統（主控台綁定留痕版）</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -95,6 +95,39 @@
             opacity: 0 !important;
         }
 
+
+        /* --- ERP Portal / Audit 留痕介面 --- */
+        .erp-session-card {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border: 1px solid rgba(148,163,184,.35);
+            color: #fff;
+            border-radius: .75rem;
+            padding: .75rem;
+            margin-top: .75rem;
+            box-shadow: 0 8px 20px rgba(15,23,42,.18);
+        }
+        .erp-session-row { display:flex; justify-content:space-between; gap:.5rem; align-items:center; font-size:12px; margin-top:4px; }
+        .erp-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; background:rgba(250,204,21,.14); color:#fde68a; border:1px solid rgba(250,204,21,.28); font-weight:700; }
+        .erp-audit-note {
+            margin-top: .75rem; padding:.65rem; border-radius:.65rem;
+            background:#f8fafc; border:1px solid #e2e8f0; color:#334155; font-size:12px;
+        }
+        .erp-action-grid { display:grid; grid-template-columns: 1fr 1fr; gap:.5rem; margin-top:.75rem; }
+        .erp-mini-btn { border:0; border-radius:.55rem; padding:.55rem .6rem; font-size:12px; font-weight:800; cursor:pointer; }
+        .erp-mini-btn.blue { background:#dbeafe; color:#1e40af; }
+        .erp-mini-btn.slate { background:#e2e8f0; color:#334155; }
+        .erp-mini-btn.red { background:#fee2e2; color:#991b1b; }
+        .erp-mini-btn.green { background:#dcfce7; color:#166534; }
+        .audit-modal-panel { background:white; width:min(960px, 94vw); max-height:86vh; border-radius:14px; overflow:hidden; box-shadow:0 25px 60px rgba(0,0,0,.35); display:flex; flex-direction:column; }
+        .audit-modal-header { padding:14px 18px; background:#0f172a; color:white; display:flex; align-items:center; justify-content:space-between; }
+        .audit-modal-body { padding:14px; overflow:auto; background:#f8fafc; }
+        .receipt-history-table { width:100%; border-collapse:collapse; font-size:13px; background:white; border-radius:10px; overflow:hidden; }
+        .receipt-history-table th { background:#e2e8f0; color:#334155; text-align:left; padding:10px; white-space:nowrap; }
+        .receipt-history-table td { border-top:1px solid #e5e7eb; padding:10px; vertical-align:top; }
+        .receipt-history-table button { padding:4px 8px; border-radius:6px; border:0; font-size:12px; font-weight:700; cursor:pointer; margin-right:4px; }
+        .audit-status-active { color:#166534; font-weight:800; }
+        .audit-status-archived { color:#991b1b; font-weight:800; }
+
         @media print {
             @page { size: A4; margin: 0; }
             body * { visibility: hidden; }
@@ -128,6 +161,25 @@
             <button onclick="resetCase()" class="w-full bg-slate-700 hover:bg-red-600 text-gray-300 hover:text-white py-1.5 rounded text-xs transition border border-slate-600">
                 <i class="fas fa-redo mr-1"></i> 開啟新案件 (清空)
             </button>
+            <div id="erpSessionCard" class="erp-session-card">
+                <div class="flex justify-between items-center">
+                    <div class="font-bold text-sm"><i class="fas fa-user-shield mr-1 text-yellow-300"></i> ERP 單一登入</div>
+                    <span id="erpSessionMode" class="erp-pill">單機模式</span>
+                </div>
+                <div class="erp-session-row"><span>目前操作人</span><b id="erpOperatorName">未綁定</b></div>
+                <div class="erp-session-row"><span>角色</span><b id="erpOperatorRole">未指定</b></div>
+                <div class="erp-session-row"><span>收據編號</span><b id="erpReceiptId">尚未建立</b></div>
+            </div>
+            <div class="erp-audit-note">
+                <b>內部留痕：</b><br>
+                <span id="erpAuditInfo">從總控制管理進入時，將自動綁定登入者；直接開啟則為單機測試模式。</span>
+            </div>
+            <div class="erp-action-grid">
+                <button class="erp-mini-btn blue" onclick="saveReceiptRecordOnly()"><i class="fas fa-database mr-1"></i> 儲存內部紀錄</button>
+                <button class="erp-mini-btn slate" onclick="openReceiptHistory()"><i class="fas fa-clock-rotate-left mr-1"></i> 收據紀錄</button>
+                <button class="erp-mini-btn green" onclick="exportReceiptRecords()"><i class="fas fa-file-export mr-1"></i> 匯出紀錄</button>
+                <button class="erp-mini-btn red" onclick="archiveCurrentReceipt()"><i class="fas fa-box-archive mr-1"></i> 作廢/封存</button>
+            </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 hide-scrollbar">
@@ -345,6 +397,40 @@
         </div>
     </div>
 
+    
+    <div id="receiptHistoryModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 no-print">
+        <div class="audit-modal-panel">
+            <div class="audit-modal-header">
+                <div>
+                    <div class="font-bold text-lg"><i class="fas fa-receipt mr-2 text-yellow-300"></i> 收據內部紀錄</div>
+                    <div class="text-xs text-slate-300">建立人、修改人、作廢/封存原因皆會保留於本機紀錄；後續可再接總資料庫。</div>
+                </div>
+                <button onclick="closeReceiptHistory()" class="text-white hover:text-red-300 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="audit-modal-body">
+                <div class="mb-3 flex gap-2 justify-end">
+                    <button class="erp-mini-btn green" onclick="exportReceiptRecords()"><i class="fas fa-file-export mr-1"></i> 匯出全部紀錄</button>
+                    <button class="erp-mini-btn red" onclick="clearArchivedReceiptRecords()"><i class="fas fa-trash-can mr-1"></i> 清除已封存紀錄</button>
+                </div>
+                <table class="receipt-history-table">
+                    <thead>
+                        <tr>
+                            <th>狀態</th>
+                            <th>日期</th>
+                            <th>客戶/標的</th>
+                            <th>金額</th>
+                            <th>建立/修改</th>
+                            <th>動作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptHistoryBody">
+                        <tr><td colspan="6" class="text-center text-slate-400">尚無紀錄</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div id="modalManager" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
         <div class="bg-white rounded-lg w-[400px] shadow-2xl flex flex-col max-h-[80vh]">
             <div class="p-4 border-b bg-gray-100 flex justify-between items-center rounded-t-lg">
@@ -365,6 +451,336 @@
     </div>
 
 <script>
+    // =========================================================
+    // ERP Portal Bridge｜總控制管理單一登入綁定＋收據留痕
+    // =========================================================
+    const ERP_RECEIPT_RECORDS_KEY = 'HG_RECEIPT_RECORDS_V1';
+    const ERP_SESSION_KEYS = ['HG_ERP_SESSION_V1', 'HG_PORTAL_SESSION', 'homego_erp_session'];
+    const ERP_ROLE_MAP = {
+        '楊翊晟': 'CEO',
+        '張淑玲': '主管',
+        '李宜婷': '主管',
+        '呂蕙蓁': '一般助理',
+        '楊雅婷': '會計',
+        '周美汎': '一般助理'
+    };
+
+    let portalUser = null;
+    let currentReceiptId = null;
+    let currentReceiptCreatedMeta = null;
+    let auditTrail = [];
+
+    function generateReceiptId() {
+        const d = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return `RCPT-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    }
+
+    function normalizePortalPayload(raw) {
+        if (!raw) return null;
+        let obj = raw;
+        if (typeof raw === 'string') {
+            try { obj = JSON.parse(raw); } catch(e) { return null; }
+        }
+        const name = obj.name || obj.userName || obj.employeeName || obj.operatorName || obj.displayName || obj.username;
+        if (!name) return null;
+        return {
+            name,
+            role: obj.role || obj.userRole || ERP_ROLE_MAP[name] || '同仁',
+            id: obj.id || obj.userId || obj.employeeId || name,
+            loginAt: obj.loginAt || obj.time || new Date().toISOString(),
+            source: obj.source || 'portal'
+        };
+    }
+
+    function getUrlSession() {
+        const params = new URLSearchParams(location.search);
+        const name = params.get('name') || params.get('user') || params.get('operator');
+        if (!name) return null;
+        return normalizePortalPayload({
+            name,
+            role: params.get('role') || ERP_ROLE_MAP[name] || '同仁',
+            id: params.get('uid') || name,
+            source: 'url'
+        });
+    }
+
+    function getStoredSession() {
+        for (const key of ERP_SESSION_KEYS) {
+            const found = normalizePortalPayload(localStorage.getItem(key) || sessionStorage.getItem(key));
+            if (found) {
+                found.source = key;
+                return found;
+            }
+        }
+        return null;
+    }
+
+    function setPortalUser(user, shouldPersist = true) {
+        const normalized = normalizePortalPayload(user);
+        if (!normalized) return false;
+        portalUser = normalized;
+        if (shouldPersist) {
+            localStorage.setItem('HG_ERP_SESSION_V1', JSON.stringify(normalized));
+            sessionStorage.setItem('HG_ERP_SESSION_V1', JSON.stringify(normalized));
+        }
+        updatePortalBadge();
+        return true;
+    }
+
+    function getOperator() {
+        if (portalUser) return portalUser;
+        return { name: '單機測試', role: '未綁定', id: 'local', source: 'local' };
+    }
+
+    function isCeo() {
+        return getOperator().name === '楊翊晟' || getOperator().role === 'CEO' || getOperator().role === '執行長';
+    }
+
+    function isManager() {
+        const op = getOperator();
+        return isCeo() || op.role === '主管' || ['張淑玲', '李宜婷'].includes(op.name);
+    }
+
+    function updatePortalBadge() {
+        const op = getOperator();
+        const nameEl = document.getElementById('erpOperatorName');
+        const roleEl = document.getElementById('erpOperatorRole');
+        const modeEl = document.getElementById('erpSessionMode');
+        const ridEl = document.getElementById('erpReceiptId');
+        const infoEl = document.getElementById('erpAuditInfo');
+        if (nameEl) nameEl.innerText = op.name;
+        if (roleEl) roleEl.innerText = op.role;
+        if (modeEl) {
+            modeEl.innerText = portalUser ? '已綁定' : '單機模式';
+            modeEl.style.background = portalUser ? 'rgba(34,197,94,.18)' : 'rgba(250,204,21,.14)';
+            modeEl.style.color = portalUser ? '#bbf7d0' : '#fde68a';
+        }
+        if (ridEl) ridEl.innerText = currentReceiptId || '尚未建立';
+        if (infoEl) {
+            const last = auditTrail.length ? auditTrail[auditTrail.length - 1] : null;
+            infoEl.innerText = last
+                ? `最後動作：${last.action}｜${last.operatorName}｜${new Date(last.time).toLocaleString('zh-TW', {hour12:false})}`
+                : `目前操作人：${op.name}（${op.role}）。儲存、載入、封存/作廢都會留下紀錄。`;
+        }
+    }
+
+    function initPortalBinding() {
+        setPortalUser(getUrlSession() || getStoredSession(), false);
+
+        window.addEventListener('message', (event) => {
+            const data = event.data || {};
+            if (data.type === 'HG_ERP_SESSION' || data.type === 'PORTAL_USER' || data.erpSession) {
+                setPortalUser(data.payload || data.user || data.erpSession, true);
+            }
+        });
+
+        // 通知父層此模組已準備好接收登入身份
+        try { window.parent && window.parent.postMessage({ type: 'HG_MODULE_READY', module: 'receipts' }, '*'); } catch(e) {}
+
+        if (!currentReceiptId) currentReceiptId = generateReceiptId();
+        updatePortalBadge();
+    }
+
+    function collectReceiptDataForAudit() {
+        syncInputs();
+        const sTotal = serviceItems.reduce((acc, i) => acc + (Number(i.price)||0), 0);
+        const tTotal = taxItems.reduce((acc, i) => acc + (Number(i.price)||0), 0);
+        const discountAmount = Number(document.getElementById('discountAmount').value) || 0;
+        const adjustAmount = Number(document.getElementById('adjustAmount').value) || 0;
+        const prepayAmount = Number(document.getElementById('prepayAmount').value) || 0;
+        return {
+            firm: document.querySelector('input[name="firm"]:checked').value,
+            clientType: document.querySelector('input[name="clientType"]:checked').value,
+            date: document.getElementById('inputDate').value,
+            clientId: document.getElementById('inputClientId').value,
+            client: document.getElementById('inputClient').value,
+            target: document.getElementById('inputTarget').value,
+            notes: document.getElementById('inputNotes').value,
+            serviceItems: JSON.parse(JSON.stringify(serviceItems)),
+            taxItems: JSON.parse(JSON.stringify(taxItems)),
+            discountName: document.getElementById('discountName').value,
+            discountAmount: document.getElementById('discountAmount').value,
+            adjustName: document.getElementById('adjustName').value,
+            adjustAmount: document.getElementById('adjustAmount').value,
+            prepayAmount: document.getElementById('prepayAmount').value,
+            _totalAmount: (sTotal - discountAmount) + tTotal + adjustAmount - prepayAmount
+        };
+    }
+
+    function buildAuditEntry(action, note = '') {
+        const op = getOperator();
+        return {
+            time: new Date().toISOString(),
+            action,
+            operatorName: op.name,
+            operatorRole: op.role,
+            operatorId: op.id,
+            note
+        };
+    }
+
+    function enrichReceiptData(data, action = '儲存收據', note = '') {
+        if (!currentReceiptId) currentReceiptId = generateReceiptId();
+        const now = new Date().toISOString();
+        const op = getOperator();
+        const prior = getReceiptRecords().find(r => r._receiptId === currentReceiptId);
+        const createdMeta = prior || currentReceiptCreatedMeta || {};
+        const entry = buildAuditEntry(action, note);
+        auditTrail = Array.isArray(prior?._auditTrail) ? [...prior._auditTrail, entry] : [...auditTrail, entry];
+
+        return {
+            ...data,
+            _receiptId: currentReceiptId,
+            _status: data._status || createdMeta._status || 'active',
+            _createdBy: createdMeta._createdBy || op.name,
+            _createdByRole: createdMeta._createdByRole || op.role,
+            _createdAt: createdMeta._createdAt || now,
+            _updatedBy: op.name,
+            _updatedByRole: op.role,
+            _updatedAt: now,
+            _lastAction: action,
+            _auditTrail: auditTrail
+        };
+    }
+
+    function getReceiptRecords() {
+        try { return JSON.parse(localStorage.getItem(ERP_RECEIPT_RECORDS_KEY) || '[]'); }
+        catch(e) { return []; }
+    }
+
+    function setReceiptRecords(records) {
+        localStorage.setItem(ERP_RECEIPT_RECORDS_KEY, JSON.stringify(records));
+    }
+
+    function persistReceiptRecord(data, action = '儲存收據', note = '') {
+        const enriched = enrichReceiptData(data, action, note);
+        const records = getReceiptRecords();
+        const idx = records.findIndex(r => r._receiptId === enriched._receiptId);
+        if (idx >= 0) records[idx] = enriched;
+        else records.unshift(enriched);
+        setReceiptRecords(records);
+        currentReceiptCreatedMeta = enriched;
+        updatePortalBadge();
+        renderReceiptHistory();
+        return enriched;
+    }
+
+    window.saveReceiptRecordOnly = function() {
+        const saved = persistReceiptRecord(collectReceiptDataForAudit(), '儲存內部紀錄');
+        alert(`已儲存內部紀錄：${saved._receiptId}\n操作人：${saved._updatedBy}`);
+    };
+
+    window.openReceiptHistory = function() {
+        renderReceiptHistory();
+        document.getElementById('receiptHistoryModal').classList.remove('hidden');
+    };
+
+    window.closeReceiptHistory = function() {
+        document.getElementById('receiptHistoryModal').classList.add('hidden');
+    };
+
+    window.renderReceiptHistory = function() {
+        const body = document.getElementById('receiptHistoryBody');
+        if (!body) return;
+        const records = getReceiptRecords();
+        if (!records.length) {
+            body.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400">尚無紀錄</td></tr>';
+            return;
+        }
+        body.innerHTML = records.map(r => {
+            const statusLabel = r._status === 'archived' ? '已作廢/封存' : '有效';
+            const statusClass = r._status === 'archived' ? 'audit-status-archived' : 'audit-status-active';
+            const amount = new Intl.NumberFormat('zh-TW', { style:'currency', currency:'TWD', minimumFractionDigits:0 }).format(Number(r._totalAmount || 0)).replace('TWD', '$');
+            const updatedAt = r._updatedAt ? new Date(r._updatedAt).toLocaleString('zh-TW', {hour12:false}) : '-';
+            return `<tr>
+                <td><div class="${statusClass}">${statusLabel}</div><div class="text-[11px] text-slate-400">${r._receiptId || ''}</div></td>
+                <td>${r.date || '-'}</td>
+                <td><b>${r.client || '(未填客戶)'}</b><div class="text-xs text-slate-500 max-w-[260px]">${(r.target || '').slice(0,70)}</div></td>
+                <td>${amount}</td>
+                <td><div>建：${r._createdBy || '-'}</div><div>改：${r._updatedBy || '-'}</div><div class="text-xs text-slate-400">${updatedAt}</div></td>
+                <td>
+                    <button style="background:#dbeafe;color:#1e40af" onclick="loadReceiptRecord('${r._receiptId}')">載入</button>
+                    <button style="background:#fee2e2;color:#991b1b" onclick="archiveReceiptRecord('${r._receiptId}')">${r._status === 'archived' ? '已封存' : '作廢'}</button>
+                </td>
+            </tr>`;
+        }).join('');
+    };
+
+    window.loadReceiptRecord = function(id) {
+        const r = getReceiptRecords().find(x => x._receiptId === id);
+        if (!r) return alert('找不到此紀錄');
+        currentReceiptId = r._receiptId || generateReceiptId();
+        currentReceiptCreatedMeta = r;
+        auditTrail = Array.isArray(r._auditTrail) ? [...r._auditTrail] : [];
+        hydrateReceiptForm(r);
+        persistReceiptRecord(collectReceiptDataForAudit(), '載入收據紀錄');
+        closeReceiptHistory();
+    };
+
+    function hydrateReceiptForm(d) {
+        if(d.firm) document.querySelector(`input[name="firm"][value="${d.firm}"]`).checked = true;
+        if(d.clientType) document.querySelector(`input[name="clientType"][value="${d.clientType}"]`).checked = true;
+        document.getElementById('inputDate').value = d.date || '';
+        updateDateDisplay(d.date);
+        document.getElementById('inputClient').value = d.client || '';
+        document.getElementById('inputClientId').value = d.clientId || '';
+        document.getElementById('inputTarget').value = d.target || '';
+        document.getElementById('inputNotes').value = d.notes || document.getElementById('inputNotes').value;
+        document.getElementById('discountName').value = d.discountName || '折扣';
+        document.getElementById('discountAmount').value = d.discountAmount || 0;
+        document.getElementById('adjustName').value = d.adjustName || '稅費找補';
+        document.getElementById('adjustAmount').value = d.adjustAmount || 0;
+        document.getElementById('prepayAmount').value = d.prepayAmount || 0;
+        serviceItems = d.serviceItems || [];
+        taxItems = d.taxItems || [];
+        refreshEditors();
+        updateView();
+    }
+
+    window.archiveReceiptRecord = function(id) {
+        const records = getReceiptRecords();
+        const idx = records.findIndex(r => r._receiptId === id);
+        if (idx < 0) return alert('找不到此紀錄');
+        if (records[idx]._status === 'archived') return alert('此紀錄已封存');
+        const reason = prompt('請輸入作廢/封存原因：');
+        if (!reason) return alert('未填原因，已取消');
+        const op = getOperator();
+        records[idx]._status = 'archived';
+        records[idx]._archivedBy = op.name;
+        records[idx]._archivedByRole = op.role;
+        records[idx]._archivedAt = new Date().toISOString();
+        records[idx]._archiveReason = reason;
+        records[idx]._lastAction = '作廢/封存收據';
+        records[idx]._auditTrail = Array.isArray(records[idx]._auditTrail) ? records[idx]._auditTrail : [];
+        records[idx]._auditTrail.push(buildAuditEntry('作廢/封存收據', reason));
+        setReceiptRecords(records);
+        renderReceiptHistory();
+        updatePortalBadge();
+        alert('已作廢/封存並留下原因。');
+    };
+
+    window.archiveCurrentReceipt = function() {
+        if (!currentReceiptId) return alert('目前沒有可封存的收據紀錄，請先儲存。');
+        archiveReceiptRecord(currentReceiptId);
+    };
+
+    window.exportReceiptRecords = function() {
+        const records = getReceiptRecords();
+        const a = document.createElement('a');
+        const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(records, null, 2)], {type:'application/json'}));
+        a.download = `宏國易丞_收據留痕紀錄_${today}.json`;
+        a.click();
+    };
+
+    window.clearArchivedReceiptRecords = function() {
+        if (!isCeo()) return alert('只有楊翊晟可清除已封存紀錄。');
+        if (!confirm('確定清除本機已封存紀錄？正式營運建議先匯出備份。')) return;
+        setReceiptRecords(getReceiptRecords().filter(r => r._status !== 'archived'));
+        renderReceiptHistory();
+    };
+
     // --- 智能運算核心 ---
     // 允許輸入 1000+500, 500*2 等運算式，自動計算結果
     function safeCalculate(expression) {
@@ -417,6 +833,7 @@
     let currentEditType = 'service';
 
     function init() {
+        initPortalBinding();
         const today = new Date();
         document.getElementById('inputDate').value = today.toISOString().split('T')[0];
         updateDateDisplay(document.getElementById('inputDate').value);
@@ -425,6 +842,7 @@
         setupLiveUpdates();
         updateView();
         toggleStampMode();
+        renderReceiptHistory();
         setTimeout(autoFitContent, 500); 
     }
 
@@ -733,9 +1151,10 @@
             adjustAmount: document.getElementById('adjustAmount').value,
             prepayAmount: document.getElementById('prepayAmount').value
         };
+        const savedData = persistReceiptRecord(data, '儲存收據並下載JSON');
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"}));
-        a.download = `收據_${data.client}_${data.date.replace(/-/g,'')}.json`;
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(savedData, null, 2)], {type: "application/json"}));
+        a.download = `收據_${savedData.client || "未命名"}_${savedData.date.replace(/-/g,'')}_${savedData._receiptId}.json`;
         a.click();
     }
 
@@ -746,6 +1165,9 @@
         reader.onload = (e) => {
             try {
                 const d = JSON.parse(e.target.result);
+                currentReceiptId = d._receiptId || generateReceiptId();
+                currentReceiptCreatedMeta = d._receiptId ? d : null;
+                auditTrail = Array.isArray(d._auditTrail) ? [...d._auditTrail] : [];
                 if(d.serviceOpts && !d.firm) { 
                     if(confirm("這是設定檔，要匯入選項嗎？")) {
                         currentServiceOpts = d.serviceOpts; currentTaxOpts = d.taxOpts;
@@ -776,6 +1198,7 @@
 
                 refreshEditors();
                 updateView();
+                persistReceiptRecord(collectReceiptDataForAudit(), "讀取舊檔");
                 alert("讀取成功！");
             } catch(err) { alert("檔案錯誤"); }
         };
@@ -785,6 +1208,10 @@
 
     window.resetCase = function() {
         if(!confirm("確定要開啟新案件嗎？")) return;
+        currentReceiptId = generateReceiptId();
+        currentReceiptCreatedMeta = null;
+        auditTrail = [];
+        updatePortalBadge();
         document.getElementById('inputClient').value = "";
         document.getElementById('inputTarget').value = "";
         serviceItems = [{name:"", price:0}];
