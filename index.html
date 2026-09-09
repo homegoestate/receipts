@@ -620,6 +620,41 @@
         };
     }
 
+    function escapeHTML(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function encodeReceiptActionId(value) {
+        return encodeURIComponent(String(value ?? '')).replace(/'/g, '%27');
+    }
+
+    function appendHighlightedText(container, value, query) {
+        const text = String(value ?? '');
+        const needle = String(query ?? '').toLowerCase();
+        if (!needle) {
+            container.textContent = text;
+            return;
+        }
+        const lower = text.toLowerCase();
+        let offset = 0;
+        let found = lower.indexOf(needle, offset);
+        while (found >= 0) {
+            container.appendChild(document.createTextNode(text.slice(offset, found)));
+            const strong = document.createElement('b');
+            strong.className = 'text-blue-600';
+            strong.textContent = text.slice(found, found + needle.length);
+            container.appendChild(strong);
+            offset = found + needle.length;
+            found = lower.indexOf(needle, offset);
+        }
+        container.appendChild(document.createTextNode(text.slice(offset)));
+    }
+
     function enrichReceiptData(data, action = '儲存收據', note = '') {
         if (!currentReceiptId) currentReceiptId = generateReceiptId();
         const now = new Date().toISOString();
@@ -640,7 +675,11 @@
             _updatedByRole: op.role,
             _updatedAt: now,
             _lastAction: action,
-            _auditTrail: auditTrail
+            _auditTrail: auditTrail,
+            _archivedBy: createdMeta._archivedBy || data._archivedBy || '',
+            _archivedByRole: createdMeta._archivedByRole || data._archivedByRole || '',
+            _archivedAt: createdMeta._archivedAt || data._archivedAt || '',
+            _archiveReason: createdMeta._archiveReason || data._archiveReason || ''
         };
     }
 
@@ -693,15 +732,16 @@
             const statusClass = r._status === 'archived' ? 'audit-status-archived' : 'audit-status-active';
             const amount = new Intl.NumberFormat('zh-TW', { style:'currency', currency:'TWD', minimumFractionDigits:0 }).format(Number(r._totalAmount || 0)).replace('TWD', '$');
             const updatedAt = r._updatedAt ? new Date(r._updatedAt).toLocaleString('zh-TW', {hour12:false}) : '-';
+            const actionId = encodeReceiptActionId(r._receiptId);
             return `<tr>
-                <td><div class="${statusClass}">${statusLabel}</div><div class="text-[11px] text-slate-400">${r._receiptId || ''}</div></td>
-                <td>${r.date || '-'}</td>
-                <td><b>${r.client || '(未填客戶)'}</b><div class="text-xs text-slate-500 max-w-[260px]">${(r.target || '').slice(0,70)}</div></td>
+                <td><div class="${statusClass}">${statusLabel}</div><div class="text-[11px] text-slate-400">${escapeHTML(r._receiptId || '')}</div></td>
+                <td>${escapeHTML(r.date || '-')}</td>
+                <td><b>${escapeHTML(r.client || '(未填客戶)')}</b><div class="text-xs text-slate-500 max-w-[260px]">${escapeHTML((r.target || '').slice(0,70))}</div></td>
                 <td>${amount}</td>
-                <td><div>建：${r._createdBy || '-'}</div><div>改：${r._updatedBy || '-'}</div><div class="text-xs text-slate-400">${updatedAt}</div></td>
+                <td><div>建：${escapeHTML(r._createdBy || '-')}</div><div>改：${escapeHTML(r._updatedBy || '-')}</div><div class="text-xs text-slate-400">${escapeHTML(updatedAt)}</div></td>
                 <td>
-                    <button style="background:#dbeafe;color:#1e40af" onclick="loadReceiptRecord('${r._receiptId}')">載入</button>
-                    <button style="background:#fee2e2;color:#991b1b" onclick="archiveReceiptRecord('${r._receiptId}')">${r._status === 'archived' ? '已封存' : '作廢'}</button>
+                    <button style="background:#dbeafe;color:#1e40af" onclick="loadReceiptRecord(decodeURIComponent('${actionId}'))">載入</button>
+                    <button style="background:#fee2e2;color:#991b1b" onclick="archiveReceiptRecord(decodeURIComponent('${actionId}'))">${r._status === 'archived' ? '已封存' : '作廢'}</button>
                 </td>
             </tr>`;
         }).join('');
@@ -714,7 +754,7 @@
         currentReceiptCreatedMeta = r;
         auditTrail = Array.isArray(r._auditTrail) ? [...r._auditTrail] : [];
         hydrateReceiptForm(r);
-        persistReceiptRecord(collectReceiptDataForAudit(), '載入收據紀錄');
+        updatePortalBadge();
         closeReceiptHistory();
     };
 
@@ -726,7 +766,7 @@
         document.getElementById('inputClient').value = d.client || '';
         document.getElementById('inputClientId').value = d.clientId || '';
         document.getElementById('inputTarget').value = d.target || '';
-        document.getElementById('inputNotes').value = d.notes || document.getElementById('inputNotes').value;
+        document.getElementById('inputNotes').value = d.notes ?? '';
         document.getElementById('discountName').value = d.discountName || '折扣';
         document.getElementById('discountAmount').value = d.discountAmount || 0;
         document.getElementById('adjustName').value = d.adjustName || '稅費找補';
@@ -978,7 +1018,12 @@
         items.forEach(item => {
             if(!item.name && !item.price) return;
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${item.name}</td><td class="amount-col">${item.price ? formatCurrency(item.price) : '-'}</td>`;
+            const nameCell = document.createElement('td');
+            nameCell.textContent = item.name ?? '';
+            const amountCell = document.createElement('td');
+            amountCell.className = 'amount-col';
+            amountCell.textContent = item.price ? formatCurrency(item.price) : '-';
+            tr.append(nameCell, amountCell);
             tbody.appendChild(tr);
         });
     }
@@ -1040,7 +1085,7 @@
                     <button onclick="moveItem('${type}', ${i}, 1)" class="text-[10px] bg-gray-200 hover:bg-gray-300 px-1 rounded h-4 flex items-center justify-center text-gray-600" title="下移"><i class="fas fa-chevron-down"></i></button>
                 </div>
                 <div class="relative flex-1">
-                    <input type="text" id="in-${type}-name-${i}" value="${item.name}" 
+                    <input type="text" id="in-${type}-name-${i}" value="${escapeHTML(item.name)}" 
                         class="w-full border rounded px-2 py-1 text-sm focus:bg-blue-50 outline-none transition" placeholder="項目名稱"
                         oninput="handleEditorInput('${type}', ${i}, 'name', this)"
                         onfocus="showSuggest('${type}', ${i}, this)" 
@@ -1084,7 +1129,7 @@
         opts.forEach(opt => {
             if(opt.toLowerCase().includes(val)) {
                 const d = document.createElement('div');
-                d.innerHTML = opt.replace(new RegExp(`(${val})`,'gi'), '<b class="text-blue-600">$1</b>');
+                appendHighlightedText(d, opt, val);
                 d.onmousedown = (e) => {
                     e.preventDefault(); // 防止失去焦點
                     input.value = opt;
@@ -1242,7 +1287,7 @@
         opts.forEach((o, i) => {
             const d = document.createElement('div');
             d.className = "flex justify-between items-center bg-white border rounded px-2 py-1";
-            d.innerHTML = `<span>${o}</span><button onclick="delMgrOpt(${i})" class="text-red-500"><i class="fas fa-trash"></i></button>`;
+            d.innerHTML = `<span>${escapeHTML(o)}</span><button onclick="delMgrOpt(${i})" class="text-red-500"><i class="fas fa-trash"></i></button>`;
             c.appendChild(d);
         });
     }
