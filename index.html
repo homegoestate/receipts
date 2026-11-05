@@ -1399,7 +1399,7 @@ function valid(p){
  if(!/^[a-zA-Z0-9-]{10,80}$/.test(p.id)||!Number.isSafeInteger(p.version)||p.version<1)throw Error('單號或版本錯誤');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(p.date)||new Date(p.date+'T00:00:00Z').toISOString().slice(0,10)!==p.date)throw Error('日期錯誤');
  for(const f of ['client','operator'])if(typeof p[f]!=='string'||!p[f].trim()||p[f].length>100)throw Error('缺少抬頭或承辦，或文字過長');
- if(!Number.isSafeInteger(p.received)||p.received<=0||p.received>1e10)throw Error('本次收款須為正整數');
+ if(!Number.isSafeInteger(p.received)||p.received<0||p.received>1e10)throw Error('本次收款須為0以上整數');
  if(!Number.isSafeInteger(p.basis)||p.basis<0||p.basis>p.received)throw Error('申報基礎須為0至本次收款金額的整數');
  if(!['現金','匯款','票據','其他'].includes(p.payment))throw Error('收款方式錯誤');
  if(typeof p.basisReason!=='string'||p.basisReason.length>200||(p.basis!==p.received&&!p.basisReason.trim()))throw Error('申報基礎與收款不同，須填判定依據');
@@ -1504,7 +1504,7 @@ function setExtra(d={}){for(const [a,b]of [['freeReceived','received'],['freeOpe
 function getSnapshot(){
  const data=collectReceiptDataForAudit();
  if(!data.client.trim()||!data.date)throw Error('請填日期及客戶抬頭');
- const extra=getExtra(),received=plainInt('freeReceived',false),basis=received;
+ const extra=getExtra(),received=plainInt('freeReceived'),basis=received;
  extra.basisReason='代辦費扣除折扣；不含代繳規費（本工具列計口徑）';
  if(!extra.operator.trim())throw Error('請填承辦人');
  if(basis>received)throw Error('申報基礎不可高於本次收款');
