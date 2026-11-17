@@ -2144,9 +2144,11 @@ if(draftStorageError)window.receiptNotice(draftStorageError);
   async function syncCloud(id, opt) {
     if (!signedIn) { setCloud('雲端：未登入，這張收據只存在這台電腦。按「登入雲端」後再儲存一次即可同步。', 'warn'); return; }
     const rec = getReceiptRecords().find(r => r._receiptId === id) || null;
+    // 目前畫面上這張收據的來源（從雲端開啟時是雲端版本，否則是本機紀錄）
+    const meta = (currentReceiptCreatedMeta && currentReceiptCreatedMeta._receiptId === id) ? currentReceiptCreatedMeta : rec;
     let data = rec ? clone(rec) : null;
     if (opt.rev && opt.rev.data && opt.rev.data.id === id) {
-      data = Object.assign({}, rec ? clone(rec) : {}, clone(opt.rev.snapshot), { _receiptId: id, _status: rec && rec._status || 'active' });
+      data = Object.assign({}, meta ? clone(meta) : {}, clone(opt.rev.snapshot), { _receiptId: id, _status: meta && meta._status || 'active' });
       delete data.receiptId;
     }
     if (!data) return;
@@ -2155,9 +2157,16 @@ if(draftStorageError)window.receiptNotice(draftStorageError);
     try {
       const found = await api('case_receipts?receipt_id=eq.' + enc(id) + '&select=receipt_id,version,latest_version,revisions,data,updated_by,updated_at');
       const row = Array.isArray(found) && found[0] || null;
-      if (row) {
+      if (opt.archive && row && row.data && Object.keys(row.data).length) {
+        // 作廢：保留雲端上的收據內容，只加上作廢註記（避免用這台較舊的本機內容蓋掉雲端）
+        const mark = {}; ['_status', '_archivedBy', '_archivedByRole', '_archivedAt', '_archiveReason', '_lastAction'].forEach(k => { if (rec && rec[k] !== undefined) mark[k] = rec[k]; });
+        const trail = Array.isArray(row.data._auditTrail) ? row.data._auditTrail.slice() : [];
+        const last = rec && Array.isArray(rec._auditTrail) ? rec._auditTrail[rec._auditTrail.length - 1] : null;
+        if (last) trail.push(last);
+        data = Object.assign(clone(row.data), mark, { _auditTrail: trail });
+      } else if (row) {
         const known = cloud.id === id && cloud.version === row.version;
-        const base = Object.prototype.hasOwnProperty.call(opt, 'base') ? opt.base : (rec ? rec._updatedAt : undefined);
+        const base = Object.prototype.hasOwnProperty.call(opt, 'base') ? opt.base : (meta ? meta._updatedAt : undefined);
         const same = !!(row.data && row.data._updatedAt) && row.data._updatedAt === base;
         if (!known && !same) {
           setCloud('雲端：雲端上這張收據已有較新的修改（' + (row.updated_by || '其他同仁') + ' ' + new Date(row.updated_at).toLocaleString('zh-TW', { hour12: false }) + '），這次只存在這台電腦，沒有覆蓋雲端。請用「選擇案件」→「開啟」取得雲端最新版再修改。', 'err');
@@ -2227,7 +2236,7 @@ if(draftStorageError)window.receiptNotice(draftStorageError);
     const before = getReceiptRecords().find(r => r._receiptId === id) || {};
     const result = archive.apply(this, arguments);
     const after = getReceiptRecords().find(r => r._receiptId === id);
-    if (after && after._status === 'archived' && before._status !== 'archived') queueSync(id, { base: before._updatedAt || null });
+    if (after && after._status === 'archived' && before._status !== 'archived') queueSync(id, { base: before._updatedAt || null, archive: true });
     return result;
   };
 
