@@ -1499,8 +1499,8 @@ window.addEventListener('storage',e=>{if(e.key===KEY){stale=true;$('freeMessage'
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 function today(){return new Date().toLocaleDateString('sv-SE');}
 function plainInt(id,zero=true){const v=$(id).value.trim();if(!/^\d+$/.test(v))throw Error($(id).title+'須填整數，不可空白');const n=Number(v);if(!Number.isSafeInteger(n)||n>(1e10)||(!zero&&n===0))throw Error($(id).title+'金額無效');return n;}
-function getExtra(){return {received:$('freeReceived').value,operator:$('freeOperator').value,payment:$('freePayment').value,test:$('freeTest').checked,side:window.ReceiptCatalog?.side()||'other',amountMode:'serviceFees'};}
-function setExtra(d={}){for(const [a,b]of [['freeReceived','received'],['freeOperator','operator'],['freePayment','payment']])$(a).value=d[b]??(a==='freePayment'?'匯款':'');$('freeTest').checked=!!d.test;}
+function getExtra(){return {received:$('freeReceived').value,operator:$('freeOperator').value,payment:$('freePayment').value,test:$('freeTest').checked,side:window.ReceiptCatalog?.side()||'other',amountMode:'serviceFees',...(window.HGCaseLink?window.HGCaseLink.extra():{})};}
+function setExtra(d={}){for(const [a,b]of [['freeReceived','received'],['freeOperator','operator'],['freePayment','payment']])$(a).value=d[b]??(a==='freePayment'?'匯款':'');$('freeTest').checked=!!d.test;if(window.HGCaseLink)window.HGCaseLink.restore(d);}
 function getSnapshot(){
  const data=collectReceiptDataForAudit();
  if(!data.client.trim()||!data.date)throw Error('請填日期及客戶抬頭');
@@ -1767,7 +1767,7 @@ window.validateReceiptDraft=d=>{
  if(d.extra!==undefined&&(!d.extra||typeof d.extra!=='object'||Array.isArray(d.extra)))throw Error('案件補充資料格式錯誤');
 };
 window.toggleInternalPrint=()=>{$('paper').classList.toggle('internal-copy',$('internalPrint').checked);autoFitContent();};
-function signature(){return JSON.stringify({...collectReceiptDataForAudit(),extra:{operator:$('freeOperator').value,payment:$('freePayment').value,test:$('freeTest').checked,side:$('receiptSide').value},id:currentReceiptId});}
+function signature(){return JSON.stringify({...collectReceiptDataForAudit(),extra:{operator:$('freeOperator').value,payment:$('freePayment').value,test:$('freeTest').checked,side:$('receiptSide').value,caseId:(window.HGCaseLink&&window.HGCaseLink.extra().caseId)||''},id:currentReceiptId});}
 let savedSignature=signature();
 window.receiptMarkSaved=()=>{savedSignature=signature();};
 window.confirmReceiptReplace=()=>signature()===savedSignature||confirm('目前有尚未儲存的變更，確定取代？如需保留請取消並先按「儲存檔案」。');
@@ -1847,6 +1847,423 @@ if(draftStorageError)window.receiptNotice(draftStorageError);
  const hydrate=hydrateReceiptForm;hydrateReceiptForm=function(d){const result=hydrate(d);refreshNegativeNotice();return result;};
  document.addEventListener('input',e=>{if(/^in-(service|tax)-price-\d+$/.test(e.target.id)||e.target.id==='adjustAmount')refreshNegativeNotice();});
  refreshNegativeNotice();
+})();
+</script>
+<script>
+// R5 案件連動＋雲端收據（Claude 2026-11-17）
+// 1) 「選擇案件」：從背表雲端案件帶入抬頭（買方或賣方）、統編（公司）、案件標的、辦理身分套組；收據記住所屬案件。
+// 2) 已登入（與背表、作業台同一組帳號）時，儲存／定稿／作廢會另存一份到雲端 case_receipts，作業台可看每案收據。
+// 原本的本機紀錄、JSON 存檔、PDF 定稿與印花稅帳冊完全照舊；未登入時只存本機。
+(function () {
+  'use strict';
+  const SB = 'https://stsbxxredsudldyxwqpw.supabase.co';
+  const KEY = 'sb_publishable_Ii9luYqjDErotcRxiBVEtw_StDtZc5w';
+  const FB = 'https://www.gstatic.com/firebasejs/9.22.0/';
+  const CFG = { apiKey: "AIzaSyCcSH0HQutt6rYcFWjCKOpTSWkBDeinyvw", authDomain: "homego-system.firebaseapp.com", databaseURL: "https://homego-system-default-rtdb.firebaseio.com", projectId: "homego-system", storageBucket: "homego-system.firebasestorage.app", messagingSenderId: "679007509034", appId: "1:679007509034:web:df50010c5ab8cd7f964153" };
+  const $ = id => document.getElementById(id);
+  const trim = v => String(v ?? '').trim();
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const enc = encodeURIComponent;
+  const SIDE = { buyer: '買方', seller: '賣方', other: '其他' };
+  const STATUS = { draft: '草稿', final: '已定稿', void: '已作廢' };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const int = v => { const n = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) ? Math.round(n) : null; };
+
+  let link = null;                                  // 目前收據所屬案件 {caseId, caseNo, caseName}
+  let cloud = { id: null, version: null, latest: 0, at: '' }; // 目前收據最後一次看到的雲端狀態
+  let signedIn = false, auth = null, db = null, gate = null, fbReady = null;
+  let cases = null, cloudMsg = { text: '雲端：檢查登入中…', kind: '' };
+
+  // ---------- 畫面 ----------
+  const css = document.createElement('style');
+  css.textContent = `
+  #hgCaseLink{background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:10px 12px;font-size:13px;color:#16394b}
+  #hgCaseLink h3{margin:0 0 6px;font-size:14px;font-weight:800}
+  #hgCaseLink .row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  #hgCaseLink button,.hgl-dlg button{border:1px solid #94a3b8;background:#fff;color:#16394b;border-radius:5px;padding:4px 10px;font-size:12.5px;font-weight:700;cursor:pointer}
+  #hgCaseLink button.pri,.hgl-dlg button.pri{background:#0f766e;border-color:#0f766e;color:#fff}
+  #hgCaseLink .info{font-weight:700;line-height:1.5}
+  #hgCaseLink .cloud{margin-top:6px;font-size:12px;line-height:1.5;color:#475569}
+  #hgCaseLink .cloud.ok{color:#166534}#hgCaseLink .cloud.warn{color:#92400e}#hgCaseLink .cloud.err{color:#b91c1c;font-weight:700}
+  .hgl-dlg{border:0;border-radius:12px;padding:0;width:min(760px,96vw);max-height:90vh;box-shadow:0 20px 50px rgba(0,0,0,.35);user-select:text;-webkit-user-select:text}
+  .hgl-dlg::backdrop{background:rgba(15,23,42,.55)}
+  .hgl-dlg .hd{background:#16394b;color:#fff;padding:10px 14px;display:flex;gap:8px;align-items:center}
+  .hgl-dlg .hd b{font-size:15px}.hgl-dlg .hd button{margin-left:auto}
+  .hgl-dlg .bd{padding:12px 14px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;font-size:13px;color:#1f2937}
+  @media(max-width:700px){.hgl-dlg .bd{grid-template-columns:1fr}}
+  .hgl-dlg input[type=search]{width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px}
+  .hgl-dlg .chips{display:flex;gap:6px;margin:6px 0}.hgl-dlg .chips button.on{background:#16394b;color:#fff;border-color:#16394b}
+  .hgl-dlg ul{list-style:none;margin:0;padding:0;max-height:52vh;overflow:auto;border:1px solid #e2e8f0;border-radius:6px}
+  .hgl-dlg li{padding:7px 8px;border-bottom:1px solid #eef2f6;cursor:pointer}.hgl-dlg li:hover{background:#f1f6fb}.hgl-dlg li.on{background:#dbeafe}
+  .hgl-dlg li .t{font-weight:700;color:#16394b}.hgl-dlg li .s{font-size:12px;color:#64748b}
+  .hgl-dlg .side{display:flex;flex-direction:column;gap:8px}.hgl-dlg .muted{color:#64748b;font-size:12px}
+  .hgl-dlg table{width:100%;border-collapse:collapse;font-size:12px}.hgl-dlg td,.hgl-dlg th{border-bottom:1px solid #eef2f6;padding:4px;text-align:left}
+  #hg-case-login{position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+  #hg-case-login form{background:#fff;color:#1e293b;border-radius:12px;padding:24px;width:100%;max-width:360px;box-shadow:0 20px 50px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:12px;user-select:text;-webkit-user-select:text}
+  #hg-case-login h2{margin:0;font-size:19px;font-weight:800}#hg-case-login p{margin:0;font-size:13px;color:#475569;line-height:1.6}
+  #hg-case-login input{font-size:16px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px}
+  #hg-case-login button{font-size:16px;padding:10px;border:0;border-radius:8px;background:#0f766e;color:#fff;font-weight:700}
+  #hg-case-login button.cancel{background:#e2e8f0;color:#334155}
+  #hg-case-login .err{color:#b91c1c;font-size:13px;min-height:1em}`;
+  document.head.appendChild(css);
+
+  const box = document.createElement('section');
+  box.id = 'hgCaseLink'; box.className = 'no-print'; box.setAttribute('data-testid', 'case-link');
+  box.innerHTML = '<h3>連動案件（背表）</h3><div class="info" id="hglInfo"></div><div class="row" id="hglBtns"></div><div class="cloud" id="hglCloud" role="status"></div>';
+  $('freeFormArea').before(box);
+
+  const dlg = document.createElement('dialog');
+  dlg.className = 'hgl-dlg'; dlg.setAttribute('data-testid', 'case-picker');
+  dlg.innerHTML = '<div class="hd"><b>選擇案件</b><span class="muted" style="color:#cbd5e1">資料來自背表雲端</span><button type="button" data-act="close">關閉</button></div>'
+    + '<div class="bd"><div><input type="search" id="hglQ" placeholder="搜尋編號、案名、地址、客戶、承辦"><div class="chips"><button type="button" data-scope="active" class="on">進行中</button><button type="button" data-scope="closed">已結案</button></div><ul id="hglList"></ul></div>'
+    + '<div class="side" id="hglDetail"><p class="muted">請從左側選一件案件。</p></div></div>';
+  document.body.appendChild(dlg);
+  let scope = 'active', picked = null;
+
+  function setCloud(text, kind) { cloudMsg = { text, kind: kind || '' }; render(); }
+  function render() {
+    const info = $('hglInfo'), btns = $('hglBtns'), cl = $('hglCloud');
+    if (link) {
+      info.textContent = '已連結：' + (link.caseNo || '（未編號）') + '　' + (link.caseName || '');
+      btns.innerHTML = '<button type="button" data-act="refill">重新帶入抬頭／標的</button><button type="button" data-act="pick">改選案件</button><button type="button" data-act="unlink">取消連結</button><button type="button" data-act="desk">在作業台開啟</button>';
+    } else {
+      info.textContent = '未連結案件。按「選擇案件」可自動帶入抬頭、標的與買賣方套組。';
+      btns.innerHTML = '<button type="button" class="pri" data-act="pick" data-testid="case-pick">選擇案件</button>';
+    }
+    if (!signedIn) btns.insertAdjacentHTML('beforeend', '<button type="button" data-act="login">登入雲端</button>');
+    let text = cloudMsg.text, kind = cloudMsg.kind;
+    if (signedIn && cloud.id && cloud.id !== currentReceiptId) { text = '雲端：這張收據按「儲存檔案」或定稿後，會同步存一份到雲端。'; kind = ''; }
+    cl.textContent = text; cl.className = 'cloud ' + kind;
+  }
+
+  // ---------- 登入（與背表、作業台同一組帳號；取消則只存本機） ----------
+  function loadScript(src) { return new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.onload = () => resolve(); s.onerror = () => reject(new Error('無法載入登入元件')); document.head.appendChild(s); }); }
+  function initFirebase() {
+    if (!fbReady) fbReady = (async () => {
+      if (!(window.firebase && firebase.initializeApp)) await loadScript(FB + 'firebase-app-compat.js');
+      if (!firebase.auth) await loadScript(FB + 'firebase-auth-compat.js');
+      if (!firebase.database) await loadScript(FB + 'firebase-database-compat.js');
+      const app = firebase.apps.find(a => a.name === 'hg-shared') || firebase.initializeApp(CFG, 'hg-shared');
+      auth = app.auth(); db = app.database();
+    })().catch(e => { fbReady = null; throw e; });
+    return fbReady;
+  }
+  const loginKey = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.#$\[\]\/]/g, '_');
+  const firstUser = () => new Promise(resolve => { const stop = auth.onAuthStateChanged(u => { stop(); resolve(u); }); });
+  async function checkAccess(user) {
+    const snap = await db.ref('access/' + user.uid).get(), a = snap.exists() ? snap.val() : null;
+    if (!a || a.active !== true) throw new Error('此帳號目前沒有使用權限，請聯絡楊翊晟。');
+    window.hgCaseAccess = a;
+    if (!portalUser && trim(a.employee)) { try { setPortalUser({ name: trim(a.employee), source: 'firebase' }, false); } catch (e) {} }
+    return a;
+  }
+  function errText(e) {
+    const c = String(e && e.code || '');
+    if (c.includes('invalid') || c.includes('wrong-password') || c.includes('user-not-found')) return '帳號或密碼錯誤。';
+    if (c.includes('too-many')) return '嘗試次數過多，請稍後再試。';
+    if (c.includes('disabled')) return '此帳號已停用，請聯絡楊翊晟。';
+    if (c.includes('network')) return '目前無法連線，請確認網路後再試。';
+    return (e && e.message) || '登入失敗，請稍後再試。';
+  }
+  function showLogin(notice) {
+    return new Promise((resolve, reject) => {
+      const wrap = document.createElement('div'); wrap.id = 'hg-case-login';
+      wrap.innerHTML = '<form autocomplete="on"><h2>收據雲端登入</h2><p></p><input id="hgCaseUser" placeholder="帳號（與總管理相同）" autocomplete="username" required><input id="hgCasePass" type="password" placeholder="密碼" autocomplete="current-password" required><div class="err"></div><button type="submit">登入</button><button type="button" class="cancel">先不要（只存這台電腦）</button></form>';
+      wrap.querySelector('p').textContent = notice || '請用總管理的帳號與密碼登入。登入後才能選擇案件，收據也會同步存到雲端。';
+      const form = wrap.querySelector('form'), err = wrap.querySelector('.err'), btn = wrap.querySelector('button[type=submit]');
+      wrap.querySelector('.cancel').onclick = () => { wrap.remove(); reject(new Error('已取消登入，收據只存在這台電腦。')); };
+      form.addEventListener('submit', async ev => {
+        ev.preventDefault(); err.textContent = ''; btn.disabled = true;
+        try {
+          const name = $('hgCaseUser').value.trim(), pass = $('hgCasePass').value, keys = [loginKey(name), loginKey(name.replace(/\s+/g, ''))];
+          let email = null;
+          for (let i = 0; i < keys.length && !email; i++) { const s = await db.ref('loginIndex/' + keys[i]).get(); if (s.exists() && typeof s.val() === 'string') email = s.val(); }
+          if (!email) throw new Error('帳號或密碼錯誤。');
+          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          const cred = await auth.signInWithEmailAndPassword(email, pass);
+          try { await checkAccess(cred.user); } catch (e2) { await auth.signOut().catch(() => {}); throw e2; }
+          wrap.remove(); resolve(cred.user);
+        } catch (e) { err.textContent = errText(e); btn.disabled = false; }
+      });
+      document.body.appendChild(wrap);
+      setTimeout(() => { const u = $('hgCaseUser'); if (u) u.focus(); }, 0);
+    });
+  }
+  async function ensureLogin() {
+    await initFirebase();
+    const u = await firstUser();
+    if (u) { try { await checkAccess(u); return u; } catch (e) { await auth.signOut().catch(() => {}); return showLogin(e.message); } }
+    return showLogin();
+  }
+  async function token() {
+    if (!gate) gate = ensureLogin().catch(e => { gate = null; throw e; });
+    await gate;
+    if (!auth.currentUser) { gate = ensureLogin(); await gate; }
+    if (!signedIn) { signedIn = true; setCloud('雲端：已登入。收據按「儲存檔案」或定稿後，會同步存一份到雲端。', 'ok'); }
+    return auth.currentUser.getIdToken();
+  }
+  async function silentCheck() {
+    try { await initFirebase(); const u = await firstUser(); if (!u) return false; await checkAccess(u); return true; } catch (e) { return false; }
+  }
+  async function api(path, opt = {}) {
+    const headers = { apikey: KEY, Authorization: 'Bearer ' + await token(), Accept: 'application/json', ...(opt.body ? { 'Content-Type': 'application/json' } : {}), ...(opt.headers || {}) };
+    const res = await fetch(SB + '/rest/v1/' + path, { ...opt, headers, cache: 'no-store' });
+    const text = await res.text(); let data = null; try { data = text ? JSON.parse(text) : null; } catch (e) {}
+    if (!res.ok) { const err = new Error((data && (data.message || data.hint)) || text || ('HTTP ' + res.status)); err.status = res.status; err.code = data && data.code; throw err; }
+    return data;
+  }
+
+  // ---------- 案件 ----------
+  async function loadCases(force) {
+    if (cases && !force) return cases;
+    const rows = await api('nexus_data?id=eq.1&select=payload');
+    if (!Array.isArray(rows) || !rows.length || !Array.isArray(rows[0].payload)) throw new Error('目前登入的帳號沒有案件讀取權限，請聯絡楊翊晟。');
+    const num = s => { const m = String(s || '').match(/(\d+)$/); return m ? Number(m[1]) : 0; };
+    cases = rows[0].payload.filter(c => c && typeof c === 'object' && !Array.isArray(c) && !c._archived)
+      .sort((a, b) => (trim(a['結案時間']) ? 1 : 0) - (trim(b['結案時間']) ? 1 : 0) || num(b['編號']) - num(a['編號']));
+    return cases;
+  }
+  function parties(c, side) {
+    let list = []; try { list = JSON.parse((side === 'buyer' ? c._buyers_json : c._sellers_json) || '[]'); } catch (e) { list = []; }
+    return (Array.isArray(list) ? list : []).filter(p => p && trim(p.name) && p.role !== '代理人');
+  }
+  const caseName = c => trim(c['案名']) || trim(c['地址']);
+  function setLink(c) { link = c ? { caseId: c._caseId, caseNo: trim(c['編號']), caseName: caseName(c) } : null; render(); }
+  function fillParties(c, side) {
+    if (side === 'buyer' || side === 'seller') {
+      const ps = parties(c, side);
+      $('inputClient').value = ps.map(p => trim(p.name)).join('、');
+      const company = ps.length === 1 && /^\d{8}$/.test(trim(ps[0].ledgerId));
+      const type = document.querySelector('input[name="clientType"][value="' + (company ? 'company' : 'individual') + '"]');
+      if (type) type.checked = true;
+      $('inputClientId').value = company ? trim(ps[0].ledgerId) : '';
+    }
+    $('inputTarget').value = trim(c['地址']) || trim(c['案名']);
+    ['inputClient', 'inputClientId', 'inputTarget'].forEach(id => $(id).dispatchEvent(new Event('input', { bubbles: true })));
+    updateView(); calculateTotal();
+  }
+  function applyCase(c, side) {
+    if (!c._caseId) { alert('這件案件還沒有系統編號。請先到「地政士作業台」開啟此案、按「產生案件編號」，再回來帶入。'); return false; }
+    if (!window.confirmReceiptReplace()) return false;
+    const keep = window.confirm; window.confirm = () => true;     // 開新收據：前面已確認過未存檔變更，不再重複詢問
+    try { window.resetCase(); } finally { window.confirm = keep; }
+    setLink(c);
+    if (side === 'buyer' || side === 'seller') { $('receiptSide').value = side; window.applyReceiptSide(side); }
+    fillParties(c, side);
+    window.receiptNotice('已帶入案件「' + (link.caseNo || '') + ' ' + link.caseName + '」' + (SIDE[side] ? '（' + SIDE[side] + '）' : '') + '：請核對抬頭、統編與金額，再儲存或定稿。');
+    return true;
+  }
+
+  // ---------- 案件選擇視窗 ----------
+  function listHtml() {
+    const kw = trim($('hglQ').value).toLowerCase();
+    const rows = (cases || []).filter(c => (scope === 'active') === !trim(c['結案時間']))
+      .filter(c => !kw || [c['編號'], c['案名'], c['地址'], c['客戶姓名(買/賣方)'], c['承辦']].join(' ').toLowerCase().includes(kw)).slice(0, 150);
+    return rows.length ? rows.map(c => '<li data-key="' + esc(c._caseId || '') + '" data-idx="' + cases.indexOf(c) + '"' + (picked === c ? ' class="on"' : '') + '><div class="t">' + esc(c['編號']) + '　' + esc(c['案名'] || '（未填案名）') + '</div><div class="s">' + esc(c['地址'] || '') + '</div><div class="s">' + esc(c['客戶姓名(買/賣方)'] || '') + '｜承辦 ' + esc(c['承辦'] || '—') + '</div></li>').join('') : '<li class="muted" style="cursor:default">沒有符合的案件</li>';
+  }
+  async function showDetail(c) {
+    picked = c; $('hglList').innerHTML = listHtml();
+    const d = $('hglDetail');
+    const names = s => parties(c, s).map(p => esc(p.name)).join('、') || '<span class="muted">未填</span>';
+    let html = '<div><b>' + esc(c['編號']) + '　' + esc(c['案名'] || '') + '</b><div class="muted">' + esc(c['地址'] || '') + '</div></div>'
+      + '<div>買方：' + names('buyer') + '<br>賣方：' + names('seller') + '</div>';
+    if (!c._caseId) {
+      d.innerHTML = html + '<p class="muted" style="color:#92400e">這件案件還沒有系統編號，無法連結收據。請先到「地政士作業台」開啟此案、按「產生案件編號」。</p>';
+      return;
+    }
+    html += '<div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="pri" data-apply="buyer">開新收據：買方</button><button type="button" class="pri" data-apply="seller">開新收據：賣方</button><button type="button" data-apply="other">開新收據：其他</button></div>'
+      + '<div id="hglRcpts" class="muted">讀取此案雲端收據中…</div>';
+    d.innerHTML = html;
+    try {
+      const rows = await api('case_receipts?case_id=eq.' + enc(c._caseId) + '&select=receipt_id,status,test,side,receipt_date,client,received,latest_version,updated_by&order=created_at.desc');
+      if (picked !== c) return;
+      $('hglRcpts').innerHTML = !rows.length ? '此案在雲端還沒有收據。' : '<table><tr><th>日期</th><th>身分</th><th>抬頭</th><th>代辦費</th><th>狀態</th><th></th></tr>' + rows.map(r => '<tr><td>' + esc(r.receipt_date || '') + '</td><td>' + esc(SIDE[r.side] || '') + '</td><td>' + esc(r.client) + '</td><td>' + (r.received == null ? '' : Number(r.received).toLocaleString()) + '</td><td>' + esc(STATUS[r.status] || r.status) + (r.latest_version ? ' v' + r.latest_version : '') + (r.test ? '（測試）' : '') + '</td><td><button type="button" data-open="' + esc(r.receipt_id) + '">開啟</button></td></tr>').join('') + '</table>';
+    } catch (e) { if (picked === c) $('hglRcpts').textContent = '雲端收據讀取失敗：' + e.message; }
+  }
+  async function openPicker() {
+    try { await token(); } catch (e) { setCloud('雲端：' + e.message, 'warn'); return; }
+    if (!dlg.open) dlg.showModal();
+    $('hglList').innerHTML = '<li class="muted">讀取案件中…</li>';
+    try { await loadCases(true); $('hglList').innerHTML = listHtml(); $('hglQ').focus(); }
+    catch (e) { $('hglList').innerHTML = '<li class="muted">案件讀取失敗：' + esc(e.message) + '</li>'; }
+  }
+  dlg.addEventListener('click', async ev => {
+    const t = ev.target.closest('button,li'); if (!t) return;
+    if (t.dataset.act === 'close') return dlg.close();
+    if (t.dataset.scope) { scope = t.dataset.scope; dlg.querySelectorAll('[data-scope]').forEach(b => b.classList.toggle('on', b === t)); $('hglList').innerHTML = listHtml(); return; }
+    if (t.tagName === 'LI' && t.dataset.idx) return showDetail(cases[Number(t.dataset.idx)]);
+    if (t.dataset.apply && picked) { if (applyCase(picked, t.dataset.apply)) dlg.close(); return; }
+    if (t.dataset.open) { dlg.close(); await openCloud(t.dataset.open); }
+  });
+  $('hglQ').addEventListener('input', () => { $('hglList').innerHTML = listHtml(); });
+
+  box.addEventListener('click', async ev => {
+    const act = ev.target.closest('button') && ev.target.closest('button').dataset.act; if (!act) return;
+    if (act === 'pick') return openPicker();
+    if (act === 'login') { try { await token(); } catch (e) { setCloud('雲端：' + e.message, 'warn'); } return; }
+    if (act === 'unlink') { if (confirm('取消這張收據與案件「' + (link && link.caseNo || '') + '」的連結？抬頭與金額不會改變。')) { link = null; render(); document.dispatchEvent(new Event('change')); } return; }
+    if (act === 'desk' && link) { const w = window.open('/case/desk.html?case=' + enc(link.caseId), '_blank'); if (w) { try { w.opener = null; } catch (e) {} } return; }
+    if (act === 'refill' && link) {
+      if (!confirm('用案件目前的資料覆蓋抬頭、統編與案件標的？代辦費與規費金額不變。')) return;
+      try {
+        const c = (await loadCases(true)).find(x => x._caseId === link.caseId);
+        if (!c) return alert('雲端找不到這件案件（可能已封存）。');
+        setLink(c); fillParties(c, window.ReceiptCatalog ? window.ReceiptCatalog.side() : 'other');
+      } catch (e) { alert('讀取案件失敗：' + e.message); }
+    }
+  });
+
+  // ---------- 雲端收據 ----------
+  function localRevisions(id) {
+    try { return window.ReceiptApp.getState().revisions.filter(r => r.data && r.data.id === id); } catch (e) { return []; }
+  }
+  async function openCloud(id) {
+    try {
+      const rows = await api('case_receipts?receipt_id=eq.' + enc(id) + '&select=*');
+      if (!rows.length) return alert('雲端找不到這張收據。');
+      const row = rows[0], d = row.data || {};
+      if (!window.confirmReceiptReplace()) return;
+      const local = getReceiptRecords().find(r => r._receiptId === row.receipt_id);
+      if (local && (local.client !== d.client || local.firm !== d.firm) && !confirm('這台電腦已有同編號、但抬頭或事務所不同的本機紀錄。確定以雲端版本開啟？（本機紀錄在你按儲存前不會被覆蓋）')) return;
+      currentReceiptId = row.receipt_id;
+      currentReceiptCreatedMeta = d;
+      auditTrail = Array.isArray(d._auditTrail) ? d._auditTrail.slice() : [];
+      hydrateReceiptForm(d);
+      updatePortalBadge();
+      if (window.receiptMarkSaved) window.receiptMarkSaved();
+      cloud = { id: row.receipt_id, version: row.version, latest: row.latest_version, at: row.updated_at };
+      const localMax = Math.max(0, ...localRevisions(row.receipt_id).map(r => r.data.version));
+      setCloud('雲端：已開啟雲端收據（' + (STATUS[row.status] || row.status) + (row.latest_version ? ' 第 ' + row.latest_version + ' 版' : '') + '，' + (row.updated_by || '') + ' 最後修改）。'
+        + (row.latest_version > localMax ? '這張收據是在其他電腦定稿的，這台電腦不能再改版；要更正請到原電腦，或作廢後另開。' : ''), row.latest_version > localMax ? 'warn' : 'ok');
+      window.receiptNotice('已從雲端開啟收據，尚未覆寫這台電腦的紀錄；修改後請按「儲存檔案」。');
+    } catch (e) { alert('雲端收據開啟失敗：' + e.message); }
+  }
+
+  let chain = Promise.resolve();
+  function queueSync(id, opt) { chain = chain.then(() => syncCloud(id, opt || {})).catch(() => {}); return chain; }
+  async function syncCloud(id, opt) {
+    if (!signedIn) { setCloud('雲端：未登入，這張收據只存在這台電腦。按「登入雲端」後再儲存一次即可同步。', 'warn'); return; }
+    const rec = getReceiptRecords().find(r => r._receiptId === id) || null;
+    // 目前畫面上這張收據的來源（從雲端開啟時是雲端版本，否則是本機紀錄）
+    const meta = (currentReceiptCreatedMeta && currentReceiptCreatedMeta._receiptId === id) ? currentReceiptCreatedMeta : rec;
+    let data = rec ? clone(rec) : null;
+    if (opt.rev && opt.rev.data && opt.rev.data.id === id) {
+      data = Object.assign({}, meta ? clone(meta) : {}, clone(opt.rev.snapshot), { _receiptId: id, _status: meta && meta._status || 'active' });
+      delete data.receiptId;
+    }
+    if (!data) return;
+    const ex = data.extra || {};
+    const revs = localRevisions(id).map(r => ({ version: r.data.version, digest: r.data.digest, reason: r.reason, createdAt: r.createdAt, date: r.data.date, client: r.data.client, received: r.data.received, side: r.data.side, payment: r.data.payment, operator: r.data.operator, test: !!r.data.test }));
+    try {
+      const found = await api('case_receipts?receipt_id=eq.' + enc(id) + '&select=receipt_id,version,latest_version,revisions,data,updated_by,updated_at');
+      const row = Array.isArray(found) && found[0] || null;
+      if (opt.archive && row && row.data && Object.keys(row.data).length) {
+        // 作廢：保留雲端上的收據內容，只加上作廢註記（避免用這台較舊的本機內容蓋掉雲端）
+        const mark = {}; ['_status', '_archivedBy', '_archivedByRole', '_archivedAt', '_archiveReason', '_lastAction'].forEach(k => { if (rec && rec[k] !== undefined) mark[k] = rec[k]; });
+        const trail = Array.isArray(row.data._auditTrail) ? row.data._auditTrail.slice() : [];
+        const last = rec && Array.isArray(rec._auditTrail) ? rec._auditTrail[rec._auditTrail.length - 1] : null;
+        if (last) trail.push(last);
+        data = Object.assign(clone(row.data), mark, { _auditTrail: trail });
+      } else if (row) {
+        const known = cloud.id === id && cloud.version === row.version;
+        const base = Object.prototype.hasOwnProperty.call(opt, 'base') ? opt.base : (meta ? meta._updatedAt : undefined);
+        const same = !!(row.data && row.data._updatedAt) && row.data._updatedAt === base;
+        if (!known && !same) {
+          setCloud('雲端：雲端上這張收據已有較新的修改（' + (row.updated_by || '其他同仁') + ' ' + new Date(row.updated_at).toLocaleString('zh-TW', { hour12: false }) + '），這次只存在這台電腦，沒有覆蓋雲端。請用「選擇案件」→「開啟」取得雲端最新版再修改。', 'err');
+          return;
+        }
+      }
+      const merged = new Map(); (row && Array.isArray(row.revisions) ? row.revisions : []).forEach(r => r && r.version && merged.set(r.version, r)); revs.forEach(r => merged.set(r.version, r));
+      const revisions = [...merged.values()].sort((a, b) => a.version - b.version);
+      const op = getOperator().name || '';
+      const body = {
+        case_id: ex.caseId || null, case_no: trim(ex.caseNo), case_name: trim(ex.caseName),
+        status: data._status === 'archived' ? 'void' : (revisions.length ? 'final' : 'draft'),
+        test: !!ex.test || String(id).startsWith('TEST-'),
+        firm: data.firm, side: ['buyer', 'seller', 'other'].includes(ex.side) ? ex.side : 'other',
+        receipt_date: /^\d{4}-\d{2}-\d{2}$/.test(data.date || '') ? data.date : null,
+        client: trim(data.client), operator: trim(ex.operator), payment: trim(ex.payment),
+        received: int(ex.received), total: int(data._totalAmount),
+        latest_version: Math.max(0, ...revisions.map(r => r.version)), revisions, data, updated_by: op
+      };
+      let out;
+      if (!row) out = await api('case_receipts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ receipt_id: id, created_by: op, ...body }) });
+      else out = await api('case_receipts?receipt_id=eq.' + enc(id) + '&version=eq.' + row.version, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(body) });
+      if (!Array.isArray(out) || out.length !== 1) { setCloud('雲端：雲端上這張收據剛被其他人修改，這次只存在這台電腦，沒有覆蓋雲端。請重新開啟雲端版本。', 'err'); return; }
+      cloud = { id, version: out[0].version, latest: out[0].latest_version, at: out[0].updated_at };
+      const t = new Date(out[0].updated_at).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
+      setCloud('雲端：已同步 ' + t + '（' + (STATUS[out[0].status] || out[0].status) + (out[0].latest_version ? ' 第 ' + out[0].latest_version + ' 版' : '') + (body.case_id ? '，已掛在案件 ' + (body.case_no || '') : '，未連結案件') + '）。', 'ok');
+    } catch (e) {
+      setCloud('雲端：同步失敗（' + e.message + '），這張收據仍已存在這台電腦。' + (e.code === '23505' ? '雲端已有同編號收據。' : ''), 'err');
+    }
+  }
+
+  // 儲存（儲存檔案／儲存內部紀錄）後同步
+  const wrapSave = orig => function () {
+    const id = currentReceiptId, before = getReceiptRecords().find(r => r._receiptId === id) || null, beforeText = JSON.stringify(before);
+    const result = orig.apply(this, arguments);
+    const after = getReceiptRecords().find(r => r._receiptId === id);
+    if (after && JSON.stringify(after) !== beforeText) queueSync(id, { base: before ? before._updatedAt : null });
+    return result;
+  };
+  window.saveCase = wrapSave(window.saveCase);
+  window.saveReceiptRecordOnly = wrapSave(window.saveReceiptRecordOnly);
+
+  // 定稿（列印／建立輸出快照）：先確認雲端沒有比這台電腦更新的定稿版本，避免版本號重複；完成後同步
+  async function versionGuard(id) {
+    if (!signedIn) return true;
+    try {
+      const found = await api('case_receipts?receipt_id=eq.' + enc(id) + '&select=latest_version');
+      const remote = found && found[0] ? found[0].latest_version : 0;
+      const localMax = Math.max(0, ...localRevisions(id).map(r => r.data.version));
+      if (remote > localMax) { alert('這張收據已在其他電腦定稿到第 ' + remote + ' 版，這台電腦沒有那些版本。為避免版本編號重複，請到原電腦改版，或作廢後另開新收據。'); return false; }
+    } catch (e) { setCloud('雲端：無法確認雲端定稿版本（' + e.message + '），本次照常定稿，完成後再同步。', 'warn'); }
+    return true;
+  }
+  const wrapFinal = orig => async function () {
+    const id = currentReceiptId;
+    if (!(await versionGuard(id))) return null;
+    const r = await orig.apply(this, arguments);
+    if (r && r.data && r.data.id === id) queueSync(id, { rev: r });
+    return r;
+  };
+  if (window.freePrint) window.freePrint = wrapFinal(window.freePrint);
+  if (window.freePrepare) window.freePrepare = wrapFinal(window.freePrepare);
+
+  // 作廢／封存後同步（作廢後雲端不能恢復）
+  const archive = window.archiveReceiptRecord;
+  window.archiveReceiptRecord = function (id) {
+    const before = getReceiptRecords().find(r => r._receiptId === id) || {};
+    const result = archive.apply(this, arguments);
+    const after = getReceiptRecords().find(r => r._receiptId === id);
+    if (after && after._status === 'archived' && before._status !== 'archived') queueSync(id, { base: before._updatedAt || null, archive: true });
+    return result;
+  };
+
+  // 收據的「extra」帶上所屬案件（getExtra／setExtra 會呼叫）
+  window.HGCaseLink = {
+    extra: () => link ? { caseId: link.caseId, caseNo: link.caseNo, caseName: link.caseName } : {},
+    restore: d => { link = d && d.caseId ? { caseId: String(d.caseId), caseNo: trim(d.caseNo), caseName: trim(d.caseName) } : null; render(); }
+  };
+
+  // ---------- 開頁 ----------
+  render();
+  setTimeout(async () => {
+    const params = new URLSearchParams(location.search);
+    const wantCase = params.get('case'), wantSide = params.get('side'), wantReceipt = params.get('receipt');
+    signedIn = await silentCheck();
+    setCloud(signedIn ? '雲端：已登入。收據按「儲存檔案」或定稿後，會同步存一份到雲端。' : '雲端：未登入，收據只存在這台電腦。', signedIn ? 'ok' : 'warn');
+    if (!wantCase && !wantReceipt) return;
+    ['case', 'side', 'receipt'].forEach(k => params.delete(k));
+    try { history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '')); } catch (e) {}
+    try { await token(); } catch (e) { setCloud('雲端：' + e.message, 'warn'); return; }
+    if (wantReceipt) return openCloud(wantReceipt);
+    try {
+      const c = (await loadCases(true)).find(x => x._caseId === wantCase);
+      if (!c) return alert('找不到網址指定的案件（可能已封存）。');
+      applyCase(c, ['buyer', 'seller'].includes(wantSide) ? wantSide : 'other');
+    } catch (e) { alert('讀取案件失敗：' + e.message); }
+  }, 0);
 })();
 </script>
 </body>
